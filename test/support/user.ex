@@ -64,7 +64,7 @@ defmodule Macaw.Auth.Ash.Test.User do
   end
 
   actions do
-    defaults([:read])
+    defaults([:read, :destroy])
 
     create :seed do
       accept([:username, :hashed_password, :display_name, :roles, :source])

@@ -13,7 +13,7 @@ A [macaw_auth](https://gitlab.conet.yarina.org/dco-tek/macaw_auth) backend over 
 
 ```elixir
 # mix.exs
-{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.1.0"}
+{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.1.1"}
 
 # config.exs
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
@@ -28,7 +28,7 @@ config :macaw_auth, Macaw.Auth.Ash,
   display_name_field: :name,                # optional
   source_field: :source,                    # optional; without it every user is "local"
   disabled_field: :disabled_at,             # optional, boolean or timestamp
-  idle_days: 14
+  idle_days: 14                             # 1..3650, at most the user resource's token_lifetime
 ```
 
 The token resource takes this library's extension and notifier (a verifier refuses it without the notifier):

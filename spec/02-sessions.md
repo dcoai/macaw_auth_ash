@@ -4,7 +4,7 @@
 
 ## 1. A session is a stored user token {#ash-sessions-token}
 
-`Macaw.Auth.Ash.Sessions.create/2` loads the user's record, signs **an ordinary AshAuthentication user JWT** for it (`AshAuthentication.Jwt.token_for_user/2`, purpose `"user"`: the resource's own signing secret, lifetime and claims), and stores its row in the token resource (`store_token`, purpose `"user"`):
+`Macaw.Auth.Ash.Sessions.create/2` loads the user's record (**gone, deleted after signing in: `{:error, :invalid}`,** and nothing is signed or stored), signs **an ordinary AshAuthentication user JWT** for it (`AshAuthentication.Jwt.token_for_user/2`, purpose `"user"`: the resource's own signing secret, lifetime and claims), and stores its row in the token resource (`store_token`, purpose `"user"`):
 - **the session's id is the token's `jti`;** the row's `subject` is the user's (`"<subject name>?<primary key>=<id>"`), its `expires_at` the JWT's;
 - **Macaw's metadata is in the row's `extra_data["macaw_auth"]`:** `created_at` and `last_used_at` (ISO 8601), `remote_ip` (a string; a tuple formatted as one), `user_agent` (truncated to 255 characters), `second_factor_passed` (the option, default true) and `completed_steps` (`[]`);
 - **the JWT goes to the client** as the session's token. A resource that stores every token itself (`store_all_tokens?`) gets the same row, with Macaw's metadata added by the upsert.
@@ -16,6 +16,12 @@
 ```test:ash-session-row
 a session's token is a JWT whose jti is the session's id, sub "user?id=<id>" and purpose "user"; the resource holds one row with that jti, purpose and subject, and extra_data["macaw_auth"]["user_agent"] "Test/1.0"
 ```
+
+```test:ash-session-deleted-user
+a user destroyed after Fixtures.user!: Sessions.create(user, []) and Macaw.Auth.create_session(user) are {:error, :invalid}, and the token resource holds no row
+```
+
+**The contract has no such refusal.** `Macaw.Auth.Backend.create_session/2` is typed `{:ok, token, session}` only, and `Macaw.Auth.Plug.log_in/3` matches that, so the refusal reaches a plug host as a `MatchError` there rather than here ([06 §1](06-limits.md#ash-known)). There is no session to give: one would need a JWT signed for a subject that no longer exists.
 
 ```test:ash-session-not-stored
 the kit's "no session token is stored as it is" holds over every column of every token row, read with plain SQL
@@ -47,7 +53,7 @@ Validating, in order:
 - **an idle session** (unused more than `idle_days` × 86 400 seconds) **or one past its row's `expires_at`** is revoked and refused, `:expired`;
 - **`touch: true`** (a request) records use **at most once an hour** (when `last_used_at` is at least 3 600 seconds old), by updating the row's `extra_data` while it is still a live session (a revocation racing the write wins); **`touch: false`** (a re-check, and the default) **never does,** so an idle tab never keeps a session alive.
 
-**The JWT's own expiry is the session's absolute limit:** the user resource's `token_lifetime`. **A host sets it to at least `idle_days`,** or sessions end before they are idle. The rule is documented, not checked ([06 §2](06-limits.md#ash-gaps)).
+**The JWT's own expiry is the session's absolute limit:** the user resource's `token_lifetime`. **It is at least `idle_days`,** or sessions would end before they are idle: `Macaw.Auth.Ash.Config` refuses a shorter one at load, naming both ([01 §1](01-backend.md#ash-config)).
 
 Expired and disabled sessions are not announced to open pages; they find them gone at their next re-check, as under the native backend.
 

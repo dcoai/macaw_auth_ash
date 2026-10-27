@@ -26,14 +26,24 @@
 | `display_name_field` | the attribute for `display_name` | none | an attribute |
 | `source_field` | the attribute naming the owning source | none: every user is `"local"` | an attribute |
 | `disabled_field` | a boolean or timestamp attribute: set means disabled | none | an attribute |
-| `idle_days` | how long a session may go unused ([02 §3](02-sessions.md#ash-sessions-idle)) | 14 | a positive integer |
+| `idle_days` | how long a session may go unused ([02 §3](02-sessions.md#ash-sessions-idle)) | 14 | an integer from 1 to 3650 (as the native backend's `session_idle_days`), **and no longer than the user resource's `token_lifetime`** (below) |
 
 And the user resource needs **a single-attribute primary key:** sessions name their user by the subject's one primary-key value.
 
-The faults read: `"unknown keys [:color_scheme]"`, `"user_resource is required"`, `"user_resource: <m> is not an Ash resource"`, `"token_resource is required (<user> names none)"`, `"token_resource <m> needs the Macaw.Auth.Ash.TokenResource extension"`, `"set one of strategy (a name) or strategies (a non-empty list)"`, `"strategy :nope is not on <user>"`, `"strategy :x is a <struct>"` (a strategy of another kind), `"user_resource needs a single-attribute primary key, not [...]"`, `"<key>: :nope is not an attribute of <user>"`, `"roles_from: M.f/1 is not defined"`, `"roles_from: <v> is neither an attribute nor {module, function}"`, `"idle_days: 0 is not a positive integer"`.
+**The token lifetime outlasts the idle period.** The user JWT's expiry is a session's absolute limit ([02 §3](02-sessions.md#ash-sessions-idle)), so a `token_lifetime` shorter than `idle_days` would end sessions before they are idle. `parse!/1` reads the user resource's lifetime (`AshAuthentication.Info.authentication_tokens_token_lifetime/1`, `{amount, :days | :hours | :minutes | :seconds}` once AshAuthentication's transformer has made a bare integer hours) and refuses one shorter than `idle_days` × 86 400 seconds, naming both values; equal is accepted.
+
+The faults read: `"unknown keys [:color_scheme]"`, `"user_resource is required"`, `"user_resource: <m> is not an Ash resource"`, `"token_resource is required (<user> names none)"`, `"token_resource <m> needs the Macaw.Auth.Ash.TokenResource extension"`, `"set one of strategy (a name) or strategies (a non-empty list)"`, `"strategy :nope is not on <user>"`, `"strategy :x is a <struct>"` (a strategy of another kind), `"user_resource needs a single-attribute primary key, not [...]"`, `"<key>: :nope is not an attribute of <user>"`, `"roles_from: M.f/1 is not defined"`, `"roles_from: <v> is neither an attribute nor {module, function}"`, `"idle_days: 0 is not an integer from 1 to 3650"`, and `"idle_days: 31 is longer than <user>'s token_lifetime {30, :days}: sessions would end at the token's expiry before they are idle; set token_lifetime to at least 31 days, or idle_days to at most 30"` (the last clause left out when the lifetime is under a day).
 
 ```test:ash-config-faults
 parse!/1 with strategies: [:nope], an unknown key :color_scheme, disabled_field: :nope and idle_days: 0 each raises ArgumentError naming the fault
+```
+
+```test:ash-config-idle-bounds
+idle_days 0, 3651, 14.5 and "14" each raise ArgumentError "idle_days: <v> is not an integer from 1 to 3650"; idle_days 1 is accepted
+```
+
+```test:ash-config-token-lifetime
+with the test user resource's token_lifetime {30, :days}, idle_days 30 is accepted and idle_days 31 raises ArgumentError naming 31 and {30, :days}
 ```
 
 ```test:ash-config-defaults
@@ -42,7 +52,8 @@ parse!(user_resource: User) takes the token resource and domain from the user re
 
 ## 2. Signing in {#ash-authenticate}
 
-`Macaw.Auth.Ash.authenticate/2` checks `%{username: _, password: _}` against the configured strategies, in order: `{:ok, %Macaw.Auth.User{}}`, or `{:error, :invalid_credentials | :disabled}`.
+`Macaw.Auth.Ash.authenticate/2` checks `%{username: _, password: _}` against the configured strategies, in order: `{:ok, %Macaw.Auth.User{}}`, or `{:error, :invalid_credentials | :disabled | :throttled}`. Options: `:remote_ip` (a string or an address tuple, formatted as a string; the client's, which `Macaw.Auth.Plug` passes) and `:now` (a `DateTime`, the throttle's clock; default the system clock).
+- **The throttle is checked first** (§2.1): while it blocks, nothing below runs.
 - **The username is trimmed;** the password is passed as given (AshAuthentication's own arguments are Ash strings, which it trims at registration and sign-in alike, so a password with surrounding spaces still matches).
 - **An empty username or password** (or a missing or non-string one) never reaches a strategy: a hash's time is spent against nothing (the first password strategy's `hash_provider.simulate/0`, when there is one) and the refusal is `:invalid_credentials`.
 - **The first strategy that knows the user decides,** as macaw_auth's native sources do ([macaw_auth 06 §2](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/06-native-sources.md#auth-chain)): its acceptance signs the user in; its refusal is final, so a wrong password never falls through to the next strategy, or one account's password could be tried against another's; a strategy that doesn't know the user passes the attempt on. With none knowing the user, the last refusal stands.
@@ -53,9 +64,7 @@ parse!(user_resource: User) takes the token resource and domain from the user re
 
 **The token AshAuthentication's sign-in signs is revoked at once.** AshAuthentication 4.15's password sign-in always signs a user token for the user it accepts (its preparation has no way to ask for none). The session is `create_session/2`'s ([02](02-sessions.md)), so that token is revoked immediately, quietly (the notifier ignores it, [04 §1](04-notifier.md#ash-notifier)): it never leaves `authenticate/2`, and revoked it is no credential even to AshAuthentication. Each password sign-in therefore leaves one revocation row in the token resource until the expunger removes it ([06](06-limits.md#ash-limits)).
 
-**No throttle.** `:remote_ip` is ignored, and nothing counts failures: a sign-in is never `:throttled` under this backend ([06 §2](06-limits.md#ash-gaps)).
-
-Every attempt emits `[:macaw_auth, :ash, :authenticate]` with `%{count: 1}` and `%{result: :ok | :error, reason, strategy: name | nil, user_id: id | nil}` (`reason` the strategy's own, `:empty` for an empty field, `:disabled`); **never the username or password.**
+Every attempt emits `[:macaw_auth, :ash, :authenticate]` with `%{count: 1}` and `%{result: :ok | :error, reason, strategy: name | nil, user_id: id | nil}` (`reason` the strategy's own, `:empty` for an empty field, `:disabled`, `:throttled` with strategy and user id nil); **never the username or password.**
 
 ```test:ash-authenticate-fields
 a user with roles ["admin", "viewer"] and display name "Ada" signs in as %Macaw.Auth.User{username: <theirs>, display_name: "Ada", roles: ["admin", "viewer"], source: "local", disabled: false, second_factor: :none}
@@ -79,6 +88,50 @@ five refusals of an unknown user take more than a quarter of the time of five re
 
 ```test:ash-authenticate-discarded-token
 after a password sign-in, the token resource holds one row, purpose "revocation", the user has no sessions, and a subscriber hears nothing
+```
+
+### 2.1 The throttle {#ash-throttle}
+
+**Sign-in failures back off as under the native backend, by the native backend's own throttle,** `Macaw.Auth.Native.Throttle` ([macaw_auth 10](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/10-native-throttle.md#auth-throttle)), used as it is: the same keys, backoff, cap, sweep and table. It depends on nothing of the native backend's (no repo, no configuration): one ETS table owned by a process macaw_auth's application starts whichever backend is configured. Its values are its constants: five free failures, then `2^(n-5)` seconds from the key's last failure, capped at 15 minutes ([macaw_auth 10 §2](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/10-native-throttle.md#auth-throttle-backoff)).
+- **Two keys** ([macaw_auth 10 §1](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/10-native-throttle.md#auth-throttle-keys)): **the username,** trimmed and lower-cased (`Alice`, ` alice` and `ALICE` share a count; a case-sensitive identity only shares one count between its case variants, which slows nobody but a guesser), every empty username sharing the one key `:invalid`; and **the address,** the `:remote_ip` passed. **No `:remote_ip`, no address key:** a caller that passes none is throttled by username alone. An attempt waits for the longer of the two keys' waits.
+- **While either key waits,** `authenticate/2` is `{:error, :throttled}` **without checking the password** (no strategy runs, so no token is signed and no directory is asked), and the attempt is **not counted.** It still **spends a hash's time,** as an empty field does (the first password strategy's `hash_provider.simulate/0`, bcrypt's `no_user_verify`), so the response time doesn't tell a guesser when the block starts or ends. (A host whose strategies are all LDAP has no password strategy, so a blocked attempt spends nothing there; nor does a checked one hash locally, its cost is the directory's.)
+- **Every other refusal counts as a failure** on both keys, as under the native backend: a wrong password, an unknown user, an empty field, a disabled user.
+- **A success resets the username's count, never the address's** ([macaw_auth 10 §3](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/10-native-throttle.md#auth-throttle-reset)), so one valid account can't clear its address's count between guesses at others.
+
+```test:ash-throttle-backoff
+five wrong passwords from 192.0.2.1 at t0: the right password is :throttled at t0 and at t0 + 999 ms, and signs in at t0 + 1 000 ms
+```
+
+```test:ash-throttle-per-address
+five unknown usernames from 198.51.100.1: a real user's right password from it is :throttled, and from 198.51.100.2 signs in
+```
+
+```test:ash-throttle-per-username
+five wrong passwords at ned from five addresses: ned's right password from a sixth is :throttled; oli's from that sixth signs in
+```
+
+```test:ash-throttle-normalized
+five failures at the username upper-cased with surrounding spaces throttle the username as stored
+```
+
+```test:ash-throttle-no-address
+five failures at five usernames with no :remote_ip: a sixth user signs in
+```
+
+```test:ash-throttle-success-resets-user
+kim's five failures from 192.0.2.9, then her success from another address after the wait: four more failures leave her free; one more failure from 192.0.2.9 then throttles lee from it
+```
+
+```test:ash-throttle-empty
+five empty usernames from 192.0.2.20: an empty username with no address is :throttled (the shared key), and a real user's right password from 192.0.2.20 is :throttled (the address)
+```
+
+```test:ash-throttle-unchecked
+a throttled right password emits reason :throttled with strategy and user id nil, adds no token row (a checked one leaves a revoked sign-in token), and is not counted: it signs in once the five failures' wait has passed
+```
+
+```test:ash-throttle-timing
+five throttled attempts take more than a quarter of the time of five checked wrong passwords (each spends a hash)
 ```
 
 ## 3. The user {#ash-to-user}

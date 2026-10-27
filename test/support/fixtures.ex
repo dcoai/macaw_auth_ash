@@ -22,8 +22,11 @@ defmodule Macaw.Auth.Ash.Test.Fixtures do
 
   alias Macaw.Auth.Ash.Test.{Repo, User}
 
+  # The sign-in throttle's counts are global (an ETS table macaw_auth's
+  # application owns), so each test starts with none.
   @impl true
   def reset! do
+    :ok = Macaw.Auth.Native.Throttle.reset()
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
   end
 

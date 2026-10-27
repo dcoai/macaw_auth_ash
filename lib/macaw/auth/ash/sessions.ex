@@ -36,7 +36,10 @@ defmodule Macaw.Auth.Ash.Sessions do
     revoked at its next look-up; a request (`touch: true`) records use at
     most once an hour, and a re-check (`touch: false`) never does. The
     JWT's own expiry (the user resource's `token_lifetime`) is the
-    session's absolute limit: set it to at least `idle_days`.
+    session's absolute limit, at least `idle_days` (`Macaw.Auth.Ash.Config`
+    refuses a shorter one).
+  - **A deleted user has no new session.** `create/2` for a user deleted
+    after signing in is `{:error, :invalid}`.
   - **A disabled user has no session.** Looking one up revokes it.
 
   Every function honors `:now`. Every read and write is made with
@@ -56,14 +59,23 @@ defmodule Macaw.Auth.Ash.Sessions do
 
   @doc """
   Starts a session for `user`: `{:ok, token, session}`, the JWT for the
-  client only. Options: `:remote_ip`, `:user_agent`,
+  client only, or `{:error, :invalid}` when the user is gone (deleted
+  after signing in): there is no record to sign a token for, and nothing
+  is stored. Options: `:remote_ip`, `:user_agent`,
   `:second_factor_passed` (default true), `:now`.
   """
-  @spec create(User.t(), keyword()) :: {:ok, binary(), Session.t()}
+  @spec create(User.t(), keyword()) :: {:ok, binary(), Session.t()} | {:error, :invalid}
   def create(%User{} = user, opts) do
     config = Config.get()
+
+    case Ash.get(config.user_resource, user.id, ash(config) ++ [not_found_error?: false]) do
+      {:ok, nil} -> {:error, :invalid}
+      {:ok, record} -> start(config, user, record, opts)
+    end
+  end
+
+  defp start(config, user, record, opts) do
     now = now(opts)
-    {:ok, record} = Ash.get(config.user_resource, user.id, ash(config))
     {:ok, token, %{"jti" => jti}} = Jwt.token_for_user(record, %{"purpose" => "user"})
 
     meta = %{

@@ -22,7 +22,12 @@ defmodule Macaw.Auth.Ash.Config do
     Each is a password strategy or a `Macaw.Auth.Ash.Strategy.Ldap`.
   - `roles_from` is an attribute holding a list of strings, or `{m, f}`
     called with the user record.
-  - `idle_days`: a session unused this long expires.
+  - `idle_days`: a session unused this long expires; 1 to 3650, as the
+    native backend's `session_idle_days`. **The user resource's
+    `token_lifetime` must be at least this long**: the JWT's expiry is a
+    session's absolute limit (`Macaw.Auth.Ash.Sessions`), so a shorter
+    lifetime would end sessions before they are idle. It is checked here,
+    not left to a host to notice.
 
   Read on every call (`get/0`), not cached: it is a handful of keyword
   lookups, and a test or a host that changes it sees the change at once.
@@ -90,6 +95,8 @@ defmodule Macaw.Auth.Ash.Config do
 
     domain = Keyword.get_lazy(settings, :domain, fn -> Ash.Resource.Info.domain(user) end)
     strategies = strategies!(user, settings)
+    idle_days = idle_days!(Keyword.get(settings, :idle_days, 14))
+    token_lifetime!(user, idle_days)
 
     %__MODULE__{
       user_resource: user,
@@ -107,7 +114,7 @@ defmodule Macaw.Auth.Ash.Config do
       source_field: optional_attribute!(user, settings, :source_field),
       disabled_field: optional_attribute!(user, settings, :disabled_field),
       roles_from: roles_from!(user, Keyword.get(settings, :roles_from, :roles)),
-      idle_days: idle_days!(Keyword.get(settings, :idle_days, 14))
+      idle_days: idle_days
     }
   end
 
@@ -169,8 +176,33 @@ defmodule Macaw.Auth.Ash.Config do
   defp roles_from!(_user, other),
     do: fail("roles_from: #{inspect(other)} is neither an attribute nor {module, function}")
 
-  defp idle_days!(days) when is_integer(days) and days > 0, do: days
-  defp idle_days!(other), do: fail("idle_days: #{inspect(other)} is not a positive integer")
+  defp idle_days!(days) when is_integer(days) and days in 1..3650, do: days
+
+  defp idle_days!(other),
+    do: fail("idle_days: #{inspect(other)} is not an integer from 1 to 3650")
+
+  # The user JWT's lifetime (AshAuthentication's transformer has made it
+  # `{amount, unit}`), against the idle period it must outlast.
+  defp token_lifetime!(user, idle_days) do
+    {:ok, lifetime} = AshAuthentication.Info.authentication_tokens_token_lifetime(user)
+
+    if seconds(lifetime) < idle_days * 86_400 do
+      fail(
+        "idle_days: #{idle_days} is longer than #{inspect(user)}'s token_lifetime " <>
+          "#{inspect(lifetime)}: sessions would end at the token's expiry before they " <>
+          "are idle; set token_lifetime to at least #{idle_days} days" <>
+          shorter(div(seconds(lifetime), 86_400))
+      )
+    end
+  end
+
+  defp shorter(0), do: ""
+  defp shorter(days), do: ", or idle_days to at most #{days}"
+
+  defp seconds({n, :days}), do: n * 86_400
+  defp seconds({n, :hours}), do: n * 3_600
+  defp seconds({n, :minutes}), do: n * 60
+  defp seconds({n, :seconds}), do: n
 
   defp fail(message), do: raise(ArgumentError, "config :macaw_auth, Macaw.Auth.Ash: " <> message)
 end

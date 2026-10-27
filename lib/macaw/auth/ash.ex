@@ -18,7 +18,8 @@ defmodule Macaw.Auth.Ash do
 
   - **Who someone is**: `authenticate/2` runs the configured
     AshAuthentication strategies in order, as `Macaw.Auth.Native` runs its
-    sources: the first that knows the user decides.
+    sources: the first that knows the user decides; failures back off by
+    macaw_auth's native throttle.
   - **Their sessions**: stored user tokens in the token resource
     (`Macaw.Auth.Ash.Sessions`, which says why).
 
@@ -40,12 +41,15 @@ defmodule Macaw.Auth.Ash do
   alias AshAuthentication.Strategy.Password
   alias Macaw.Auth.Ash.{Config, Sessions}
   alias Macaw.Auth.Ash.Strategy.Ldap
+  alias Macaw.Auth.Native.Throttle
   alias Macaw.Auth.User
 
   @doc """
   Checks `%{username: _, password: _}` against the configured strategies,
   in order: `{:ok, %Macaw.Auth.User{}}`, or `{:error, :invalid_credentials
-  | :disabled}`.
+  | :disabled | :throttled}`. Options: `:remote_ip` (a string or an
+  address tuple; the client's, for the throttle's address key), `:now` (a
+  `DateTime`, for the throttle's clock).
 
   **The first strategy that knows the user decides.** A password
   strategy knows a user who has a row with a password hash; an LDAP
@@ -64,18 +68,50 @@ defmodule Macaw.Auth.Ash do
   A disabled user (`disabled_field`) is refused with `:disabled`, only
   after the right password, so the refusal tells a guesser nothing.
 
+  **Throttled** as the native backend is, by its throttle
+  (`Macaw.Auth.Native.Throttle`, which macaw_auth's application starts
+  whichever backend is configured): failures back off per username
+  (trimmed and case-folded; an empty one shares one key) and per
+  `:remote_ip`. While either waits, the attempt is refused `:throttled`
+  without checking the password, and not counted, but a hash's time is
+  still spent (as for an empty field), so the response time doesn't tell
+  a guesser when the block starts or ends. Every other refusal counts as
+  a failure; a success resets the username's count, never the address's.
+
   Emits `[:macaw_auth, :ash, :authenticate]` with `%{count: 1}` and
   `%{result: :ok | :error, reason: term, strategy: name | nil, user_id:
   id | nil}`; never the username or password.
   """
   @impl Macaw.Auth.Backend
   @spec authenticate(map(), keyword()) ::
-          {:ok, User.t()} | {:error, :invalid_credentials | :disabled}
-  def authenticate(credentials, _opts \\ []) do
+          {:ok, User.t()} | {:error, :invalid_credentials | :disabled | :throttled}
+  def authenticate(credentials, opts \\ []) do
     config = Config.get()
     username = credentials[:username] |> text() |> String.trim()
     password = text(credentials[:password])
+    key = throttle_key(username)
+    ip = address(Keyword.get(opts, :remote_ip))
+    now = clock(opts)
 
+    case Throttle.check(key, ip, now) do
+      {:delay, _ms} ->
+        simulate(config)
+        event(:error, :throttled, nil, nil)
+        {:error, :throttled}
+
+      :ok ->
+        result = check(config, username, password)
+
+        case result do
+          {:ok, _user} -> Throttle.success(key)
+          {:error, _reason} -> Throttle.failure(key, ip, now)
+        end
+
+        result
+    end
+  end
+
+  defp check(config, username, password) do
     if username == "" or password == "" do
       simulate(config)
       event(:error, :empty, nil, nil)
@@ -102,6 +138,22 @@ defmodule Macaw.Auth.Ash do
 
   defp text(value) when is_binary(value), do: value
   defp text(_), do: ""
+
+  # One count for `Alice`, ` alice` and `ALICE`; every empty username
+  # shares the one key it can never sign in with.
+  defp throttle_key(""), do: :invalid
+  defp throttle_key(username), do: String.downcase(username)
+
+  defp address(nil), do: nil
+  defp address(ip) when is_binary(ip), do: ip
+  defp address(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
+
+  defp clock(opts) do
+    case Keyword.get(opts, :now) do
+      %DateTime{} = now -> DateTime.to_unix(now, :millisecond)
+      nil -> Throttle.now()
+    end
+  end
 
   defp chain(config, username, password) do
     Enum.reduce_while(config.strategies, {:error, :invalid_credentials, nil}, fn strategy, _ ->

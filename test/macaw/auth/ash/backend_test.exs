@@ -90,6 +90,144 @@ defmodule Macaw.Auth.Ash.BackendTest do
 
   def shouted(record), do: Enum.map(record.roles, &String.upcase/1)
 
+  # The throttle is macaw_auth's native one (`Macaw.Auth.Native.Throttle`):
+  # its backoff and sweep are tested there; here, that this backend counts
+  # and honors it as the native backend does.
+  describe "throttle" do
+    @t0 ~U[2026-01-01 00:00:00.000Z]
+
+    defp at(ms), do: DateTime.add(@t0, ms, :millisecond)
+
+    defp fail_times(creds, n, opts) do
+      for _ <- 1..n do
+        assert Auth.authenticate(%{creds | password: "wrong"}, opts) ==
+                 {:error, :invalid_credentials}
+      end
+    end
+
+    test "five failures back off: the right password is throttled until the wait has passed" do
+      {_user, creds} = Fixtures.user!(%{})
+      fail_times(creds, 5, remote_ip: "192.0.2.1", now: @t0)
+
+      assert Auth.authenticate(creds, remote_ip: "192.0.2.1", now: @t0) == {:error, :throttled}
+
+      assert Auth.authenticate(creds, remote_ip: "192.0.2.1", now: at(999)) ==
+               {:error, :throttled}
+
+      assert {:ok, _} = Auth.authenticate(creds, remote_ip: "192.0.2.1", now: at(1_000))
+    end
+
+    test "per address: failures at five unknown usernames throttle a sixth from that address" do
+      {_user, creds} = Fixtures.user!(%{})
+
+      for n <- 1..5 do
+        assert Auth.authenticate(%{username: "nobody#{n}", password: "x"},
+                 remote_ip: "198.51.100.1",
+                 now: @t0
+               ) == {:error, :invalid_credentials}
+      end
+
+      assert Auth.authenticate(creds, remote_ip: "198.51.100.1", now: @t0) == {:error, :throttled}
+      assert {:ok, _} = Auth.authenticate(creds, remote_ip: "198.51.100.2", now: @t0)
+    end
+
+    test "per username: failures from five addresses throttle a sixth; another user signs in" do
+      {_user, ned} = Fixtures.user!(%{})
+      {_user, oli} = Fixtures.user!(%{})
+
+      for n <- 1..5, do: fail_times(ned, 1, remote_ip: "203.0.113.#{n}", now: @t0)
+
+      assert Auth.authenticate(ned, remote_ip: "203.0.113.6", now: @t0) == {:error, :throttled}
+      assert {:ok, _} = Auth.authenticate(oli, remote_ip: "203.0.113.6", now: @t0)
+    end
+
+    test "the username key is trimmed and case-folded" do
+      {_user, creds} = Fixtures.user!(%{})
+      shouted = %{creds | username: " " <> String.upcase(creds.username) <> " "}
+      fail_times(shouted, 5, now: @t0)
+
+      assert Auth.authenticate(creds, now: @t0) == {:error, :throttled}
+    end
+
+    test "no address, no address key: failures at five usernames don't throttle a sixth" do
+      {_user, creds} = Fixtures.user!(%{})
+
+      for n <- 1..5 do
+        Auth.authenticate(%{username: "nobody#{n}", password: "x"}, now: @t0)
+      end
+
+      assert {:ok, _} = Auth.authenticate(creds, now: @t0)
+    end
+
+    test "a success resets the username's count, not the address's" do
+      {_user, kim} = Fixtures.user!(%{})
+      {_user, lee} = Fixtures.user!(%{})
+      ip = [remote_ip: "192.0.2.9"]
+
+      fail_times(kim, 5, ip ++ [now: @t0])
+      assert {:ok, _} = Auth.authenticate(kim, remote_ip: "192.0.2.10", now: at(1_000))
+
+      # kim's own count is gone: four more failures leave her free.
+      fail_times(kim, 4, remote_ip: "192.0.2.11", now: at(1_000))
+      assert {:ok, _} = Auth.authenticate(kim, remote_ip: "192.0.2.11", now: at(1_000))
+
+      # 192.0.2.9's count is not: one more failure from it throttles lee.
+      fail_times(kim, 1, ip ++ [now: at(1_000)])
+      assert Auth.authenticate(lee, ip ++ [now: at(1_001)]) == {:error, :throttled}
+    end
+
+    test "an empty username counts, on one shared key" do
+      {_user, creds} = Fixtures.user!(%{})
+
+      for _ <- 1..5 do
+        assert Auth.authenticate(%{username: " ", password: "x"},
+                 remote_ip: "192.0.2.20",
+                 now: @t0
+               ) == {:error, :invalid_credentials}
+      end
+
+      assert Auth.authenticate(%{username: "", password: "x"}, now: @t0) == {:error, :throttled}
+      assert Auth.authenticate(creds, remote_ip: "192.0.2.20", now: @t0) == {:error, :throttled}
+    end
+
+    test "a throttled attempt is not checked, emits :throttled, and is not counted" do
+      {_user, creds} = Fixtures.user!(%{})
+      fail_times(creds, 5, now: @t0)
+      rows = length(Ash.read!(Token, action: :macaw_auth_read, authorize?: false))
+
+      ref = :telemetry_test.attach_event_handlers(self(), [[:macaw_auth, :ash, :authenticate]])
+      assert Auth.authenticate(creds, now: @t0) == {:error, :throttled}
+
+      assert_receive {[:macaw_auth, :ash, :authenticate], ^ref, %{count: 1},
+                      %{result: :error, reason: :throttled, strategy: nil, user_id: nil}}
+
+      :telemetry.detach(ref)
+
+      # A checked right password leaves a revoked sign-in token; this left none.
+      assert length(Ash.read!(Token, action: :macaw_auth_read, authorize?: false)) == rows
+
+      # Not counted: the wait is still five failures' (1 s), not six's.
+      assert {:ok, _} = Auth.authenticate(creds, now: at(1_000))
+    end
+
+    test "a throttled attempt still spends a hash's time" do
+      {_user, blocked} = Fixtures.user!(%{})
+      {_user, checked} = Fixtures.user!(%{})
+      fail_times(blocked, 5, now: @t0)
+
+      {blocked_us, _} =
+        :timer.tc(fn -> for _ <- 1..5, do: Auth.authenticate(blocked, now: @t0) end)
+
+      {checked_us, _} =
+        :timer.tc(fn ->
+          for _ <- 1..5, do: Auth.authenticate(%{checked | password: "wrong"}, now: @t0)
+        end)
+
+      # Same order of time: a skipped hash would be far quicker.
+      assert blocked_us > checked_us / 4
+    end
+  end
+
   describe "sessions in the token resource" do
     test "a session is a stored user token: the jti, never the JWT" do
       {user, _} = Fixtures.user!(%{})
@@ -173,6 +311,15 @@ defmodule Macaw.Auth.Ash.BackendTest do
       assert Auth.verify_second_factor(session.id, "123456") == {:error, :unsupported}
     end
 
+    test "a session for a user deleted after sign-in is refused, not a crash" do
+      {user, _} = Fixtures.user!(%{})
+      User |> Ash.get!(user.id, authorize?: false) |> Ash.destroy!(authorize?: false)
+
+      assert Macaw.Auth.Ash.Sessions.create(user, []) == {:error, :invalid}
+      assert Auth.create_session(user) == {:error, :invalid}
+      assert Ash.read!(Token, action: :macaw_auth_read, authorize?: false) == []
+    end
+
     test "ids and tokens of the wrong shape are invalid, never a crash" do
       for bad <- ["", "a.b", "a.b.c", "not a jwt at all", <<255, 0, 1>>] do
         assert Auth.fetch(bad) == {:error, :invalid}
@@ -200,6 +347,31 @@ defmodule Macaw.Auth.Ash.BackendTest do
 
       assert_raise ArgumentError, ~r/idle_days/, fn ->
         Config.parse!(user_resource: User, idle_days: 0)
+      end
+    end
+
+    test "idle_days is 1 to 3650" do
+      for bad <- [0, 3651, 14.5, "14"] do
+        assert_raise ArgumentError, ~r/idle_days: .* is not an integer from 1 to 3650/, fn ->
+          Config.parse!(user_resource: User, idle_days: bad)
+        end
+      end
+
+      assert Config.parse!(user_resource: User, idle_days: 1).idle_days == 1
+    end
+
+    # The test app's user resource sets token_lifetime {30, :days}.
+    test "the token lifetime must be at least idle_days, refused naming both" do
+      assert Config.parse!(user_resource: User, idle_days: 30).idle_days == 30
+
+      message =
+        "config :macaw_auth, Macaw.Auth.Ash: idle_days: 31 is longer than " <>
+          "Macaw.Auth.Ash.Test.User's token_lifetime {30, :days}: sessions would end " <>
+          "at the token's expiry before they are idle; set token_lifetime to at least " <>
+          "31 days, or idle_days to at most 30"
+
+      assert_raise ArgumentError, message, fn ->
+        Config.parse!(user_resource: User, idle_days: 31)
       end
     end
 

@@ -8,6 +8,7 @@ Known when v0.1.0 was released (macaw_compose#53):
 - **No generator for the host's resources.** A host writes its user and token resources itself, with the extension, the notifier, a unique identity on the username, and the fields it names in the configuration; the test app's are the worked example.
 - **An extra token per password sign-in.** AshAuthentication 4.15's password sign-in always signs a token; `Macaw.Auth.Ash` revokes it at once, quietly ([01 §2](01-backend.md#ash-authenticate)), so each password sign-in leaves a revocation row in the token resource until the expunger removes it at the token's expiry.
 - **What the directory says beyond the username, roles and display name isn't stored** ([05 §4](05-ldap-strategy.md#ash-ldap-provision)).
+- **A session for a deleted user has no refusal in the contract** (since v0.1.1, macaw_compose#76). `Macaw.Auth.Ash.Sessions.create/2` returns `{:error, :invalid}` for a user deleted after signing in ([02 §1](02-sessions.md#ash-sessions-token)), but `Macaw.Auth.Backend.create_session/2` is typed `{:ok, token, session}` only and `Macaw.Auth.Plug.log_in/3` matches it, so through the plug it still ends in a `MatchError`, in macaw_auth rather than here. Giving the callback an error return is macaw_auth's change.
 
 ```test:ash-must-change-unmapped
 every user under this backend reports must_change_password false, and a fresh session's pending step is nil
@@ -15,8 +16,4 @@ every user under this backend reports must_change_password false, and a fresh se
 
 ## 2. Gaps found writing this spec {#ash-gaps}
 
-From the code (v0.1.0); open for the owner's decision:
-- **No sign-in throttle.** `Macaw.Auth.Ash.authenticate/2` ignores `:remote_ip` and counts no failures, so under this backend nothing slows password guessing, unless the host adds AshAuthentication's own brute-force protection or a rate limit in front ([01 §2](01-backend.md#ash-authenticate)). The contract says a backend throttles second-factor attempts; nothing says it throttles sign-ins, but the native backend does.
-- **The `token_lifetime` ≥ `idle_days` rule is documented, not checked.** A user resource whose tokens live shorter than `idle_days` ends sessions at the JWT's expiry, earlier than the idle period promises ([02 §3](02-sessions.md#ash-sessions-idle)). `Macaw.Auth.Ash.Config` could compare them.
-- **`idle_days` is unbounded** (any positive integer), where the native backend's `session_idle_days` is 1..3650.
-- **A session for a deleted user raises.** `Macaw.Auth.Ash.Sessions.create/2` loads the user with `{:ok, record} = Ash.get(…)`, so creating a session for a user deleted after sign-in raises `MatchError` rather than returning a refusal (confirmed by reading; the contract's `create_session/2` has no error return).
+None open. The four found in v0.1.0 (no sign-in throttle, the `token_lifetime` ≥ `idle_days` rule unchecked, `idle_days` unbounded, a session for a deleted user raising) were fixed in v0.1.1 (macaw_compose#76): [01 §2.1](01-backend.md#ash-throttle), [01 §1](01-backend.md#ash-config), [02 §1](02-sessions.md#ash-sessions-token).

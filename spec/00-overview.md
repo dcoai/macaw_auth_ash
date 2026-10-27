@@ -12,13 +12,13 @@ An Ash host keeps Ash's registration, magic links, passkeys and policies; Macaw 
 
 ## 2. Versions and dependencies {#ash-dependencies}
 
-- **`macaw_auth` v0.1.1,** by git tag: the contract, the plugs and hooks it serves, the conformance kit it runs, the LDAP source its strategy wraps, and `Macaw.Auth.announce_revoked/2`, which v0.1.1 added for this library's notifier (macaw_compose#53). Phoenix, LiveView and PubSub come through it.
+- **`macaw_auth` v0.1.1,** by git tag: the contract, the plugs and hooks it serves, the conformance kit it runs, the LDAP source its strategy wraps, `Macaw.Auth.announce_revoked/2`, which v0.1.1 added for this library's notifier (macaw_compose#53), and `Macaw.Auth.Native.Throttle`, the native sign-in throttle the backend reuses as it is ([01 §2.1](01-backend.md#ash-throttle)); macaw_auth's application starts it whichever backend is configured. Phoenix, LiveView and PubSub come through it.
 - **`ash_authentication` `~> 4.15`, the stable line** (4.15.0 locked), and **`ash` `~> 3.7`** (3.37.2 locked). AshAuthentication's TOTP strategy exists only in 5.0, a release candidate when this was built; the versions were checked before the work started, and the stable line was chosen (macaw_compose#53).
 - **OTP applications:** `:logger`, `:crypto`, `:eldap`, `:ssl`, `:public_key`.
 - **Test only:** `ash_sqlite` and `ecto_sqlite3`. The test app (`test/support`) is an Ash domain on AshSqlite: a user resource with a password strategy, the LDAP strategy and log-out-everywhere, and a token resource with this library's extension and notifier. The `:ldap` tests need macaw's OpenLDAP fixture directory and run when `MACAW_AUTH_LDAP_HOST` names it.
 - **Elixir** 1.18 or newer.
 
-It is released by git tag (v0.1.0).
+It is released by git tag (v0.1.1: the sign-in throttle and the checked session settings, macaw_compose#76).
 
 ```elixir
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
