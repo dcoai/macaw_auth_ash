@@ -6,6 +6,7 @@
 |---|---|
 | `authenticate/2` | `Macaw.Auth.Ash.authenticate/2`: the configured strategies, in order (§2) |
 | `create_session/2`, `fetch_session/2`, `fetch_session_by_id/2`, `list_sessions/2`, `revoke_sessions/2`, `complete_step/3` | `Macaw.Auth.Ash.Sessions` ([02](02-sessions.md)) |
+| `session_idle_seconds/1` | `Macaw.Auth.Ash.session_idle_seconds/1`: `idle_days` × 86 400, the limit sessions expire by ([02 §3](02-sessions.md#ash-sessions-idle)) |
 | `verify_second_factor/3` | `{:error, :unsupported}` always ([00 §3](00-overview.md#ash-second-factor)) |
 
 **Every read and write is made with `authorize?: false`:** this is the authentication layer itself, before there is an actor to authorize.

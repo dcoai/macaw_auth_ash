@@ -48,4 +48,24 @@ defmodule Macaw.Auth.Ash.PlugTest do
     assert conn.assigns.current_user == nil
     assert get_session(conn, AuthPlug.token_key()) == nil
   end
+
+  test "signing in a user deleted since authenticating goes back to sign in, touching nothing" do
+    {_user, creds} = Fixtures.user!(%{})
+    {:ok, user} = Auth.authenticate(creds)
+    :ok = Fixtures.delete!(user)
+
+    conn =
+      conn(:post, "/login")
+      |> init_test_session(%{"kept" => "as it was"})
+      |> Phoenix.Controller.fetch_flash([])
+      |> AuthPlug.log_in(user, remember: true)
+
+    assert conn.status == 302
+    assert conn |> get_resp_header("location") |> List.first() == "/login"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "You could not be signed in."
+    assert get_session(conn, AuthPlug.token_key()) == nil
+    assert get_session(conn, "kept") == "as it was"
+    refute Map.has_key?(conn.resp_cookies, AuthPlug.remember_cookie())
+    assert Auth.list_sessions(user.id) == []
+  end
 end

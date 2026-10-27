@@ -12,13 +12,13 @@ An Ash host keeps Ash's registration, magic links, passkeys and policies; Macaw 
 
 ## 2. Versions and dependencies {#ash-dependencies}
 
-- **`macaw_auth` v0.1.1,** by git tag: the contract, the plugs and hooks it serves, the conformance kit it runs, the LDAP source its strategy wraps, `Macaw.Auth.announce_revoked/2`, which v0.1.1 added for this library's notifier (macaw_compose#53), and `Macaw.Auth.Native.Throttle`, the native sign-in throttle the backend reuses as it is ([01 §2.1](01-backend.md#ash-throttle)); macaw_auth's application starts it whichever backend is configured. Phoenix, LiveView and PubSub come through it.
+- **`macaw_auth` v0.2.0,** by git tag: the contract (v0.2.0's: `session_idle_seconds/1`, `create_session/2`'s `{:error, :invalid}` for a deleted user, `complete_step/3`'s for a session gone), the plugs and hooks it serves, the conformance kit it runs, the LDAP source its strategy wraps, `Macaw.Auth.announce_revoked/2`, which v0.1.1 added for this library's notifier (macaw_compose#53), and `Macaw.Auth.Native.Throttle`, the native sign-in throttle the backend reuses as it is ([01 §2.1](01-backend.md#ash-throttle)); macaw_auth's application starts it whichever backend is configured. Phoenix, LiveView and PubSub come through it.
 - **`ash_authentication` `~> 4.15`, the stable line** (4.15.0 locked), and **`ash` `~> 3.7`** (3.37.2 locked). AshAuthentication's TOTP strategy exists only in 5.0, a release candidate when this was built; the versions were checked before the work started, and the stable line was chosen (macaw_compose#53).
 - **OTP applications:** `:logger`, `:crypto`, `:eldap`, `:ssl`, `:public_key`.
 - **Test only:** `ash_sqlite` and `ecto_sqlite3`. The test app (`test/support`) is an Ash domain on AshSqlite: a user resource with a password strategy, the LDAP strategy and log-out-everywhere, and a token resource with this library's extension and notifier. The `:ldap` tests need macaw's OpenLDAP fixture directory and run when `MACAW_AUTH_LDAP_HOST` names it.
 - **Elixir** 1.18 or newer.
 
-It is released by git tag (v0.1.1: the sign-in throttle and the checked session settings, macaw_compose#76).
+It is released by git tag (v0.1.1: the sign-in throttle and the checked session settings, macaw_compose#76; v0.2.0: macaw_auth v0.2.0's contract, the idle limit reported, a step on a revoked session refused, a deleted user's sign-in refused cleanly, macaw_compose#84).
 
 ```elixir
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
@@ -41,7 +41,7 @@ AshAuthentication 4.x has no TOTP strategy. So under this backend:
 The contract doesn't change when 5.0 is final; only this backend gains it. A host that needs a second factor today uses macaw_auth's native backend.
 
 ```test:ash-kit
-the kit run against Macaw.Auth.Ash passes its thirteen tests outside the second factor, and reports the five second-factor tests skipped as pending with the reason above
+the kit run against Macaw.Auth.Ash passes its sixteen tests outside the second factor, and reports the five second-factor tests skipped as pending with the reason above
 ```
 
 ```test:ash-unsupported

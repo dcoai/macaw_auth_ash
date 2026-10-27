@@ -21,7 +21,11 @@ a session's token is a JWT whose jti is the session's id, sub "user?id=<id>" and
 a user destroyed after Fixtures.user!: Sessions.create(user, []) and Macaw.Auth.create_session(user) are {:error, :invalid}, and the token resource holds no row
 ```
 
-**The contract has no such refusal.** `Macaw.Auth.Backend.create_session/2` is typed `{:ok, token, session}` only, and `Macaw.Auth.Plug.log_in/3` matches that, so the refusal reaches a plug host as a `MatchError` there rather than here ([06 §1](06-limits.md#ash-known)). There is no session to give: one would need a JWT signed for a subject that no longer exists.
+**The contract allows this refusal** (since macaw_auth v0.2.0, [macaw_auth 01 §2.2](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-backend-create-session)), and the kit checks it with its `delete!/1` fixture, which destroys the user through the user resource's own destroy action. There is no session to give: one would need a JWT signed for a subject that no longer exists. **Through `Macaw.Auth.Plug.log_in/3` the sign-in fails cleanly:** back to the sign-in page, with an error flash when the pipeline fetched it, the session and every cookie untouched, nothing stored.
+
+```test:ash-plug-deleted-user
+a user authenticated, then deleted with Fixtures.delete!: log_in(conn, user, remember: true) on a session holding "kept" redirects 302 to "/login" with the error flash "You could not be signed in.", leaves the session's token unset and "kept" as it was, sets no remember cookie, and the user lists no sessions
+```
 
 ```test:ash-session-not-stored
 the kit's "no session token is stored as it is" holds over every column of every token row, read with plain SQL
@@ -51,9 +55,15 @@ a user JWT AshAuthentication signed for itself fetches as {:error, :invalid}, an
 Validating, in order:
 - **a disabled user's session is revoked** (its row flipped, §5) and refused, `:disabled`;
 - **an idle session** (unused more than `idle_days` × 86 400 seconds) **or one past its row's `expires_at`** is revoked and refused, `:expired`;
-- **`touch: true`** (a request) records use **at most once an hour** (when `last_used_at` is at least 3 600 seconds old), by updating the row's `extra_data` while it is still a live session (a revocation racing the write wins); **`touch: false`** (a re-check, and the default) **never does,** so an idle tab never keeps a session alive.
+- **`touch: true`** (a request) records use **at most once an hour** (when `last_used_at` is at least 3 600 seconds old), by updating the row's `extra_data` while it is still a live session (a revocation racing the write wins: the row stays revoked and the request is refused, `:invalid`); **`touch: false`** (a re-check, and the default) **never does,** so an idle tab never keeps a session alive.
 
 **The JWT's own expiry is the session's absolute limit:** the user resource's `token_lifetime`. **It is at least `idle_days`,** or sessions would end before they are idle: `Macaw.Auth.Ash.Config` refuses a shorter one at load, naming both ([01 §1](01-backend.md#ash-config)).
+
+**The backend reports this idle limit:** `Macaw.Auth.Ash.session_idle_seconds/1` is `idle_days` × 86 400, the contract's `session_idle_seconds/1` ([macaw_auth 01 §2.8](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-backend-idle)), which macaw_auth's remember cookie lives for. A session is valid at exactly that many seconds unused and expired one second later.
+
+```test:ash-idle-seconds
+Macaw.Auth.session_idle_seconds() is 14 × 86 400 by default and 86 400 with idle_days 1; with idle_days 1, a session fetched at last_used_at + 86 400 seconds is valid, and one second later {:error, :expired}; the kit's check that it equals the fixtures' idle_seconds/0 passes
+```
 
 Expired and disabled sessions are not announced to open pages; they find them gone at their next re-check, as under the native backend.
 
@@ -67,10 +77,14 @@ a session looked up 15 days on (idle_days 14) is {:error, :expired}, its jti rev
 
 ## 4. Steps {#ash-sessions-steps}
 
-`Macaw.Auth.Ash.Sessions.complete_step/3` updates the row's metadata: `:second_factor` and `:second_factor_enroll` set `second_factor_passed`; any other step's name joins `completed_steps`, once. A session that isn't there is left alone, `:ok`. **Steps come back as atoms only by lookup** among `Macaw.Auth.steps/0`.
+`Macaw.Auth.Ash.Sessions.complete_step/3` updates the row's metadata: `:second_factor` and `:second_factor_enroll` set `second_factor_passed`; any other step's name joins `completed_steps`, once. **A session that isn't there** (revoked by Macaw or by AshAuthentication, never one, or an id that isn't a binary) **is left alone and refused, `{:error, :invalid}`** ([macaw_auth 01 §2.6](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-backend-complete-step)), and so is one revoked between the read of its row and the write: the write updates only a live row, and finding none is the refusal. **Steps come back as atoms only by lookup** among `Macaw.Auth.steps/0`.
 
 ```test:ash-session-steps
 a session made with second_factor_passed false, after :password_change and :second_factor, reads completed_steps [:password_change] and second_factor_passed true
+```
+
+```test:ash-session-steps-gone
+complete_step with :password_change, :second_factor and :second_factor_enroll is {:error, :invalid} for a session revoked through Macaw.Auth.revoke, one revoked through AshAuthentication's TokenResource.revoke, "no-such-jti" and 123; both revoked sessions' tokens stay {:error, :invalid}
 ```
 
 ## 5. Revocation, both ways {#ash-sessions-revoke}

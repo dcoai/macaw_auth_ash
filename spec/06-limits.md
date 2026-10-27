@@ -8,7 +8,6 @@ Known when v0.1.0 was released (macaw_compose#53):
 - **No generator for the host's resources.** A host writes its user and token resources itself, with the extension, the notifier, a unique identity on the username, and the fields it names in the configuration; the test app's are the worked example.
 - **An extra token per password sign-in.** AshAuthentication 4.15's password sign-in always signs a token; `Macaw.Auth.Ash` revokes it at once, quietly ([01 §2](01-backend.md#ash-authenticate)), so each password sign-in leaves a revocation row in the token resource until the expunger removes it at the token's expiry.
 - **What the directory says beyond the username, roles and display name isn't stored** ([05 §4](05-ldap-strategy.md#ash-ldap-provision)).
-- **A session for a deleted user has no refusal in the contract** (since v0.1.1, macaw_compose#76). `Macaw.Auth.Ash.Sessions.create/2` returns `{:error, :invalid}` for a user deleted after signing in ([02 §1](02-sessions.md#ash-sessions-token)), but `Macaw.Auth.Backend.create_session/2` is typed `{:ok, token, session}` only and `Macaw.Auth.Plug.log_in/3` matches it, so through the plug it still ends in a `MatchError`, in macaw_auth rather than here. Giving the callback an error return is macaw_auth's change.
 
 ```test:ash-must-change-unmapped
 every user under this backend reports must_change_password false, and a fresh session's pending step is nil
@@ -16,4 +15,4 @@ every user under this backend reports must_change_password false, and a fresh se
 
 ## 2. Gaps found writing this spec {#ash-gaps}
 
-None open. The four found in v0.1.0 (no sign-in throttle, the `token_lifetime` ≥ `idle_days` rule unchecked, `idle_days` unbounded, a session for a deleted user raising) were fixed in v0.1.1 (macaw_compose#76): [01 §2.1](01-backend.md#ash-throttle), [01 §1](01-backend.md#ash-config), [02 §1](02-sessions.md#ash-sessions-token).
+None open. The four found in v0.1.0 (no sign-in throttle, the `token_lifetime` ≥ `idle_days` rule unchecked, `idle_days` unbounded, a session for a deleted user raising) were fixed in v0.1.1 (macaw_compose#76): [01 §2.1](01-backend.md#ash-throttle), [01 §1](01-backend.md#ash-config), [02 §1](02-sessions.md#ash-sessions-token). The deleted user's refusal still ended in a `MatchError` in `Macaw.Auth.Plug.log_in/3`, whose contract allowed no error, until macaw_auth v0.2.0 gave `create_session/2` one; v0.2.0 of this library takes it (macaw_compose#84), and the plug now goes back to sign in ([02 §1](02-sessions.md#ash-sessions-token)).

@@ -67,6 +67,17 @@ defmodule Macaw.Auth.Ash.Test.Fixtures do
     :ok
   end
 
+  # Through the user resource's own destroy action, as an administrator
+  # would remove a user; their token rows stay, as they would.
+  @impl true
+  def delete!(user) do
+    User
+    |> Ash.get!(user.id, authorize?: false)
+    |> Ash.destroy!(authorize?: false)
+
+    :ok
+  end
+
   @impl true
   def idle_seconds, do: Macaw.Auth.Ash.Config.get().idle_days * 86_400
 

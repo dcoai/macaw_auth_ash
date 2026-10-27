@@ -13,7 +13,7 @@ A [macaw_auth](https://gitlab.conet.yarina.org/dco-tek/macaw_auth) backend over 
 
 ```elixir
 # mix.exs
-{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.1.1"}
+{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.2.0"}
 
 # config.exs
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub

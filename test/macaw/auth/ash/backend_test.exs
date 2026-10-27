@@ -320,6 +320,22 @@ defmodule Macaw.Auth.Ash.BackendTest do
       assert Ash.read!(Token, action: :macaw_auth_read, authorize?: false) == []
     end
 
+    test "a step on a session that isn't there is invalid, and it stays gone" do
+      {user, _} = Fixtures.user!(%{})
+      {:ok, by_macaw, revoked} = Auth.create_session(user)
+      {:ok, by_ash, revoked_by_ash} = Auth.create_session(user)
+      :ok = Auth.revoke(revoked.id)
+      :ok = TokenResource.revoke(Token, by_ash)
+
+      for id <- [revoked.id, revoked_by_ash.id, "no-such-jti", 123],
+          step <- [:password_change, :second_factor, :second_factor_enroll] do
+        assert Auth.complete_step(id, step) == {:error, :invalid}
+      end
+
+      assert Auth.fetch(by_macaw) == {:error, :invalid}
+      assert Auth.fetch(by_ash) == {:error, :invalid}
+    end
+
     test "ids and tokens of the wrong shape are invalid, never a crash" do
       for bad <- ["", "a.b", "a.b.c", "not a jwt at all", <<255, 0, 1>>] do
         assert Auth.fetch(bad) == {:error, :invalid}
@@ -373,6 +389,20 @@ defmodule Macaw.Auth.Ash.BackendTest do
       assert_raise ArgumentError, message, fn ->
         Config.parse!(user_resource: User, idle_days: 31)
       end
+    end
+
+    test "the idle limit the backend reports is idle_days in seconds, the limit it expires by" do
+      assert Auth.session_idle_seconds() == 14 * 86_400
+
+      configure(idle_days: 1)
+      assert Auth.session_idle_seconds() == 86_400
+
+      {user, _} = Fixtures.user!(%{})
+      {:ok, token, session} = Auth.create_session(user)
+      limit = DateTime.add(session.last_used_at, Auth.session_idle_seconds(), :second)
+
+      assert {:ok, _, _} = Auth.fetch(token, now: limit)
+      assert Auth.fetch(token, now: DateTime.add(limit, 1, :second)) == {:error, :expired}
     end
 
     test "the token resource and domain default to the user resource's" do

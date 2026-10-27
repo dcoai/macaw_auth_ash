@@ -187,8 +187,9 @@ defmodule Macaw.Auth.Ash.Sessions do
 
           Keyword.get(opts, :touch, false) and idle >= @touch_every ->
             meta = Map.put(meta, "last_used_at", DateTime.to_iso8601(now))
-            update_meta(config, row, meta)
-            {:ok, user, to_session(row.jti, user.id, meta)}
+
+            with :ok <- update_meta(config, row, meta),
+                 do: {:ok, user, to_session(row.jti, user.id, meta)}
 
           true ->
             {:ok, user, to_session(row.jti, user.id, meta)}
@@ -196,7 +197,8 @@ defmodule Macaw.Auth.Ash.Sessions do
     end
   end
 
-  # Only a live session's row: a revocation racing this write wins.
+  # Only a live session's row: a revocation racing this write wins, and
+  # the write is then `{:error, :invalid}`, the row left revoked.
   defp update_meta(config, row, meta) do
     extra = Map.put(row.extra_data || %{}, @key, meta)
 
@@ -206,10 +208,13 @@ defmodule Macaw.Auth.Ash.Sessions do
     |> Ash.bulk_update!(
       TokenResource.update_action(),
       %{extra_data: extra},
-      ash(config) ++ [strategy: [:atomic, :atomic_batches, :stream]]
+      ash(config) ++ [return_records?: true, strategy: [:atomic, :atomic_batches, :stream]]
     )
-
-    :ok
+    |> Map.fetch!(:records)
+    |> case do
+      [_row] -> :ok
+      [] -> {:error, :invalid}
+    end
   end
 
   @doc "A user's sessions, newest first (created at, then id: timestamps can tie)."
@@ -279,14 +284,19 @@ defmodule Macaw.Auth.Ash.Sessions do
     |> Map.fetch!(:records)
   end
 
-  @doc "Records a step on a session: the second factor, or another step done."
-  @spec complete_step(term(), Macaw.Auth.step(), keyword()) :: :ok
-  def complete_step(id, step, _opts) do
+  @doc """
+  Records a step on a session: the second factor, or another step done.
+  `:ok`, or `{:error, :invalid}` when there is no live session by that id
+  (revoked, by Macaw or AshAuthentication, even between this read and its
+  write; or never one), which is left as it is.
+  """
+  @spec complete_step(term(), Macaw.Auth.step(), keyword()) :: :ok | {:error, :invalid}
+  def complete_step(id, step, _opts) when is_binary(id) do
     config = Config.get()
 
     case row(config, id) do
       nil ->
-        :ok
+        {:error, :invalid}
 
       row ->
         meta = meta(row)
@@ -302,6 +312,8 @@ defmodule Macaw.Auth.Ash.Sessions do
         update_meta(config, row, meta)
     end
   end
+
+  def complete_step(_id, _step, _opts), do: {:error, :invalid}
 
   @doc """
   The user id a token's subject names (the primary key's value, as the

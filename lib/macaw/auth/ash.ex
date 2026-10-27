@@ -265,6 +265,14 @@ defmodule Macaw.Auth.Ash do
   @impl Macaw.Auth.Backend
   defdelegate fetch_session_by_id(id, opts), to: Sessions, as: :fetch_by_id
 
+  @doc """
+  The idle limit `fetch_session/2` expires sessions by: `idle_days` in
+  seconds, which is also the remember cookie's lifetime.
+  """
+  @impl Macaw.Auth.Backend
+  @spec session_idle_seconds(keyword()) :: pos_integer()
+  def session_idle_seconds(_opts), do: Config.get().idle_days * 86_400
+
   @impl Macaw.Auth.Backend
   defdelegate list_sessions(user_id, opts), to: Sessions, as: :list
 
