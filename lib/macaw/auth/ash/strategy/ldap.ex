@@ -33,6 +33,12 @@ defmodule Macaw.Auth.Ash.Strategy.Ldap do
   sign-in either way). A configuration fault raises at sign-in, naming the
   key: it is a deployment bug, not a refusal.
 
+  **Each field option must name an attribute of the resource.** One that
+  doesn't is warned of at compile time (the verifier's error, which Spark
+  reports as a compile warning), refused by `Macaw.Auth.Ash.Config` when
+  it loads, and never read as unset at sign-in: a source or disabled field
+  the record lacks raises `KeyError`.
+
   **The DSL entity builds** (unless the resource defines them already):
 
   - `sign_in_with_<name>`: a generic action taking `username` and
@@ -194,19 +200,28 @@ defmodule Macaw.Auth.Ash.Strategy.Ldap do
     end
   end
 
+  # The field options, each `{option, attribute}`, unset ones left out: what
+  # the verifier below warns of, and `Macaw.Auth.Ash.Config` refuses, when
+  # one isn't an attribute of the resource.
+  @doc false
+  def fields(strategy) do
+    [
+      identity_field: strategy.identity_field,
+      roles_field: strategy.roles_field,
+      source_field: strategy.source_field,
+      display_name_field: strategy.display_name_field,
+      disabled_field: strategy.disabled_field
+    ]
+    |> Enum.reject(fn {_key, name} -> is_nil(name) end)
+  end
+
+  # Spark reports a verifier's error as a compile warning, so the resource
+  # still compiles; `Macaw.Auth.Ash.Config` refuses it when it loads.
   @impl true
   def verify(strategy, dsl) do
-    fields =
-      [
-        identity_field: strategy.identity_field,
-        roles_field: strategy.roles_field,
-        source_field: strategy.source_field,
-        display_name_field: strategy.display_name_field,
-        disabled_field: strategy.disabled_field
-      ]
-      |> Enum.reject(fn {_key, name} -> is_nil(name) end)
-
-    case Enum.find(fields, fn {_key, name} -> !Ash.Resource.Info.attribute(dsl, name) end) do
+    case Enum.find(fields(strategy), fn {_key, name} ->
+           !Ash.Resource.Info.attribute(dsl, name)
+         end) do
       nil ->
         :ok
 
@@ -278,7 +293,7 @@ defmodule Macaw.Auth.Ash.Strategy.Ldap do
 
       record ->
         cond do
-          Map.get(record, strategy.source_field) != name -> {:error, :username_taken}
+          Map.fetch!(record, strategy.source_field) != name -> {:error, :username_taken}
           disabled?(strategy, record) -> {:error, :disabled}
           true -> refresh(strategy, record, attrs)
         end
@@ -333,7 +348,10 @@ defmodule Macaw.Auth.Ash.Strategy.Ldap do
     do: Map.put(params, field, attrs[:display_name])
 
   defp disabled?(%{disabled_field: nil}, _record), do: false
-  defp disabled?(%{disabled_field: field}, record), do: Map.get(record, field) not in [nil, false]
+  # A field the record lacks raises, never reads as unset (a strategy
+  # nothing checked: Config refuses one it loads).
+  defp disabled?(%{disabled_field: field}, record),
+    do: Map.fetch!(record, field) not in [nil, false]
 
   defp ash(strategy),
     do: [domain: AshAuthentication.Info.domain!(strategy.resource), authorize?: false]

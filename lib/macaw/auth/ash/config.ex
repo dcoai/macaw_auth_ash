@@ -29,10 +29,18 @@ defmodule Macaw.Auth.Ash.Config do
     lifetime would end sessions before they are idle. It is checked here,
     not left to a host to notice.
 
+  Two of the resources' own faults are refused here too, though a compile
+  warning names them first (Spark reports a verifier's error as a warning,
+  so they compile unless warnings are errors): a token resource without
+  `Macaw.Auth.Ash.Notifier`, and an LDAP strategy on the user resource,
+  named in `strategies` or not, whose field option isn't an attribute.
+
   Read on every call (`get/0`), not cached: it is a handful of keyword
   lookups, and a test or a host that changes it sees the change at once.
   A fault raises `ArgumentError`: it is a deployment bug, not a refusal.
   """
+
+  alias Macaw.Auth.Ash.Strategy.Ldap
 
   @enforce_keys [:user_resource, :token_resource, :domain, :strategies, :primary_key]
   defstruct [
@@ -93,7 +101,14 @@ defmodule Macaw.Auth.Ash.Config do
       do:
         fail("token_resource #{inspect(token)} needs the Macaw.Auth.Ash.TokenResource extension")
 
+    # The extension's verifier only warns (Spark reports a verifier's error
+    # as a compile warning), so it is refused here whatever the build flags.
+    unless Macaw.Auth.Ash.Notifier in Ash.Resource.Info.notifiers(token),
+      do:
+        fail("token_resource #{inspect(token)} needs Macaw.Auth.Ash.Notifier among its notifiers")
+
     domain = Keyword.get_lazy(settings, :domain, fn -> Ash.Resource.Info.domain(user) end)
+    ldap_fields!(user)
     strategies = strategies!(user, settings)
     idle_days = idle_days!(Keyword.get(settings, :idle_days, 14))
     token_lifetime!(user, idle_days)
@@ -135,11 +150,21 @@ defmodule Macaw.Auth.Ash.Config do
     Enum.map(names, fn name ->
       case AshAuthentication.Info.strategy(user, name) do
         {:ok, %AshAuthentication.Strategy.Password{} = s} -> s
-        {:ok, %Macaw.Auth.Ash.Strategy.Ldap{} = s} -> s
+        {:ok, %Ldap{} = s} -> s
         {:ok, other} -> fail("strategy #{inspect(name)} is a #{inspect(other.__struct__)}")
         :error -> fail("strategy #{inspect(name)} is not on #{inspect(user)}")
       end
     end)
+  end
+
+  # Every LDAP strategy on the user resource, named in `strategies` or not
+  # (AshAuthentication's plug signs in through it either way): each field
+  # option an attribute. The strategy's verifier only warns, and a disabled
+  # field that isn't one would let a disabled user in.
+  defp ldap_fields!(user) do
+    for %Ldap{} = strategy <- AshAuthentication.Info.authentication_strategies(user),
+        {key, name} <- Ldap.fields(strategy),
+        do: attribute!(user, "strategy #{inspect(strategy.name)}'s #{key}", name)
   end
 
   # Sessions name their user by the subject's one primary key value.

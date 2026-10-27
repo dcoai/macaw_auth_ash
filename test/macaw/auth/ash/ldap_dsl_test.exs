@@ -1,12 +1,16 @@
 defmodule Macaw.Auth.Ash.Strategy.LdapDslTest do
   @moduledoc """
   The LDAP strategy as declared, without a directory: its DSL, its
-  defaults, the fields it checks, and its source, read and parsed at each
+  defaults, the fields it checks (warned at compile time, refused by
+  `Macaw.Auth.Ash.Config` at load), and its source, read and parsed at each
   sign-in (a fault raises before anything connects).
   """
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
+
+  alias Macaw.Auth.Ash.Config
   alias Macaw.Auth.Ash.Strategy.Ldap
   alias Macaw.Auth.Ash.Test.{Directory, MinimalLdapUser, User}
 
@@ -71,49 +75,129 @@ defmodule Macaw.Auth.Ash.Strategy.LdapDslTest do
     end
   end
 
-  # Today a field the strategy's actions accept fails Ash's own accept check
-  # first (at [:actions, <action>, :accept], "Cannot accept [...]"), and a
-  # missing disabled field is only a verifier's compile warning.
+  # A strategy's field that isn't an attribute: the verifier's DSL error is
+  # a compile warning (Spark's), so the resource compiles under default build
+  # flags; Config refuses it at load, whatever they were. A disabled field
+  # is the case that matters: left unchecked, a disabled user is let in.
   @tag verifies: "ash-ldap-fields"
-  @tag deviation:
-         "dco-tek/macaw_compose#86: accepted fields fail Ash's accept check first; the disabled field only warns"
-  @tag skip: "deviation: the strategy's field errors aren't the ones the spec states"
-  test "a named field that isn't an attribute fails to compile at its option's path" do
+  test "a disabled field that isn't an attribute: warned at compile time, refused at load" do
+    {user, warnings} = compile_user("LdapUserWithoutDisabledField", :disabled_field, :locked_at)
+
+    assert warnings =~ "authentication -> strategies -> corp -> disabled_field"
+    assert warnings =~ ":locked_at is not an attribute of this resource"
+
+    message =
+      "config :macaw_auth, Macaw.Auth.Ash: strategy :corp's disabled_field: :locked_at " <>
+        "is not an attribute of #{inspect(user)}"
+
+    assert_raise ArgumentError, message, fn ->
+      Config.parse!(user_resource: user, strategies: [:password, :corp])
+    end
+
+    # Checked whether or not the backend's strategies name it: AshAuthentication
+    # can sign in through it all the same.
+    assert_raise ArgumentError, message, fn -> Config.parse!(user_resource: user) end
+  end
+
+  # The fields the strategy's actions accept fail Ash's accept check when the
+  # strategy builds those actions; a resource defining them itself leaves
+  # the fields to the verifier's warning and Config's refusal, as above.
+  @tag verifies: "ash-ldap-fields-accepted"
+  test "the other field options: refused at load, or by Ash's accept check" do
     for {option, field} <- [
           identity_field: :login,
           roles_field: :groups,
           source_field: :owner,
-          display_name_field: :nick,
-          disabled_field: :locked_at
+          display_name_field: :nick
         ] do
-      source = """
-      defmodule Macaw.Auth.Ash.Test.LdapUserWithout_#{option} do
-        use Ash.Resource,
-          domain: Macaw.Auth.Ash.Test.Elsewhere,
-          data_layer: Ash.DataLayer.Ets,
-          extensions: [AshAuthentication, Macaw.Auth.Ash.Strategy.Ldap]
+      {user, warnings} =
+        compile_user("LdapUserWithout_#{option}", option, field, own_actions: true)
 
-        authentication do
-          strategies do
-            ldap :corp do
-              source({Macaw.Auth.Ash.Test.Directory, :nas, []})
-              #{option}(#{inspect(field)})
-            end
+      assert warnings =~ "authentication -> strategies -> corp -> #{option}"
+
+      assert_raise ArgumentError,
+                   "config :macaw_auth, Macaw.Auth.Ash: strategy :corp's #{option}: " <>
+                     "#{inspect(field)} is not an attribute of #{inspect(user)}",
+                   fn -> Config.parse!(user_resource: user, strategies: [:password, :corp]) end
+
+      error =
+        assert_raise Spark.Error.DslError, fn ->
+          compile_user("LdapUserBuiltWithout_#{option}", option, field)
+        end
+
+      assert error.message =~ "Cannot accept [#{inspect(field)}]"
+    end
+  end
+
+  # A user resource with a password strategy and an LDAP strategy `corp`
+  # whose `option` names `field`, the test app's token resource, and the
+  # provision and refresh actions defined by the resource when `own_actions`.
+  # Returns the module and what compiling it wrote to stderr.
+  defp compile_user(name, option, field, opts \\ []) do
+    module = Module.concat(Macaw.Auth.Ash.Test, name)
+
+    actions =
+      if opts[:own_actions] do
+        """
+        create :provision_with_corp do
+          accept([:username, :roles, :source])
+        end
+
+        update :refresh_with_corp do
+          accept([:roles])
+        end
+        """
+      end
+
+    source = """
+    defmodule #{inspect(module)} do
+      use Ash.Resource,
+        domain: Macaw.Auth.Ash.Test.Elsewhere,
+        data_layer: Ash.DataLayer.Ets,
+        extensions: [AshAuthentication, Macaw.Auth.Ash.Strategy.Ldap]
+
+      authentication do
+        tokens do
+          enabled?(true)
+          token_resource(Macaw.Auth.Ash.Test.Token)
+          require_token_presence_for_authentication?(true)
+          token_lifetime({30, :days})
+          signing_secret(fn _, _ -> {:ok, "macaw-auth-ash-test-signing-secret-of-some-length"} end)
+        end
+
+        strategies do
+          password :password do
+            identity_field(:username)
+            hashed_password_field(:hashed_password)
+          end
+
+          ldap :corp do
+            source({Macaw.Auth.Ash.Test.Directory, :nas, []})
+            #{option}(#{inspect(field)})
           end
         end
-
-        attributes do
-          uuid_primary_key(:id)
-          attribute(:username, :string, allow_nil?: false, public?: true)
-          attribute(:roles, {:array, :string}, default: [], public?: true)
-          attribute(:source, :string, public?: true)
-        end
       end
-      """
 
-      error = assert_raise Spark.Error.DslError, fn -> Code.compile_string(source) end
-      assert error.path == [:authentication, :strategies, :corp, option]
-      assert error.message == "#{inspect(field)} is not an attribute of this resource"
+      attributes do
+        uuid_primary_key(:id)
+        attribute(:username, :string, allow_nil?: false, public?: true)
+        attribute(:hashed_password, :string, sensitive?: true, public?: false)
+        attribute(:roles, {:array, :string}, default: [], public?: true)
+        attribute(:source, :string, public?: true)
+      end
+
+      identities do
+        identity(:unique_username, [:username], pre_check_with: Macaw.Auth.Ash.Test.Elsewhere)
+      end
+
+      actions do
+        defaults([:read])
+        #{actions}
+      end
     end
+    """
+
+    warnings = capture_io(:stderr, fn -> Code.compile_string(source) end)
+    {module, warnings}
   end
 end

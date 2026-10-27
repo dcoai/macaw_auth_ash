@@ -22,7 +22,7 @@ An Ash host keeps Ash's registration, magic links, passkeys and policies; Macaw 
 - **Test only:** `ash_sqlite` and `ecto_sqlite3`. The test app (`test/support`) is an Ash domain on AshSqlite: a user resource with a password strategy, the LDAP strategy and log-out-everywhere, and a token resource with this library's extension and notifier. The `:ldap` tests need macaw's OpenLDAP fixture directory and run when `MACAW_AUTH_LDAP_HOST` names it.
 - **Elixir** 1.18 or newer.
 
-It is released by git tag (v0.1.1: the sign-in throttle and the checked session settings, macaw_compose#76; v0.2.0: macaw_auth v0.2.0's contract, the idle limit reported, a step on a revoked session refused, a deleted user's sign-in refused cleanly, macaw_compose#84).
+It is released by git tag (v0.1.1: the sign-in throttle and the checked session settings, macaw_compose#76; v0.2.0: macaw_auth v0.2.0's contract, the idle limit reported, a step on a revoked session refused, a deleted user's sign-in refused cleanly, macaw_compose#84; v0.2.1: a token resource without the notifier and an LDAP strategy's field that isn't an attribute refused when the configuration loads, not only warned of at compile time, macaw_compose#87).
 
 ```elixir
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub

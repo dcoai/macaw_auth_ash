@@ -129,6 +129,23 @@ defmodule Macaw.Auth.Ash.Strategy.LdapTest do
              {:error, :invalid_credentials}
   end
 
+  # Config refuses such a strategy at load (05 §1); a sign-in nothing
+  # checked, as through AshAuthentication alone, still never reads the
+  # absent field as unset.
+  @tag verifies: "ash-ldap-absent-field"
+  test "a source or disabled field the record lacks raises, never reads as unset",
+       %{strategy: strategy} do
+    {:ok, _} = Auth.authenticate(%{username: "alice", password: "alice-password"})
+
+    assert_raise KeyError, ~r/:locked_at/, fn ->
+      Ldap.sign_in(%{strategy | disabled_field: :locked_at}, "alice", "alice-password", [])
+    end
+
+    assert_raise KeyError, ~r/:owner/, fn ->
+      Ldap.sign_in(%{strategy | source_field: :owner}, "alice", "alice-password", [])
+    end
+  end
+
   @tag verifies: "ash-ldap-session"
   test "a directory user's session works as any other" do
     {:ok, bob} = Auth.authenticate(%{username: "bob", password: "bob-password"})

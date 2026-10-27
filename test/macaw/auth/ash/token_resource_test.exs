@@ -7,8 +7,10 @@ defmodule Macaw.Auth.Ash.TokenResourceTest do
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
+
   alias Macaw.Auth
-  alias Macaw.Auth.Ash.{AnnounceRevocation, TokenResource}
+  alias Macaw.Auth.Ash.{AnnounceRevocation, Config, TokenResource}
   alias Macaw.Auth.Ash.Test.{Fixtures, OwnActionsToken, Token, User}
 
   setup do
@@ -84,46 +86,68 @@ defmodule Macaw.Auth.Ash.TokenResourceTest do
     assert %{type: :update} = Ash.Resource.Info.action(OwnActionsToken, :macaw_auth_revoke)
   end
 
-  # Spark runs a resource's verifiers after it compiles and reports their
-  # errors as compile warnings, so today the resource below compiles; the
-  # spec says it doesn't.
+  # Spark reports a verifier's error as a compile warning, so the resource
+  # compiles under default build flags; Config refuses it whatever they are.
   @tag verifies: "ash-token-verifier-refuses"
-  @tag deviation:
-         "dco-tek/macaw_compose#86: a Spark verifier's error is a compile warning, not a failure"
-  @tag skip: "deviation: the notifier verifier warns at compile time instead of failing"
-  test "a token resource without the notifier fails to compile, naming it" do
-    source = """
-    defmodule Macaw.Auth.Ash.Test.TokenWithoutNotifier do
-      use Ash.Resource,
-        domain: Macaw.Auth.Ash.Test.Elsewhere,
-        data_layer: Ash.DataLayer.Ets,
-        extensions: [AshAuthentication.TokenResource, Macaw.Auth.Ash.TokenResource]
-    end
-    """
+  test "a token resource without the notifier: warned at compile time, refused at load" do
+    warnings =
+      capture_io(:stderr, fn ->
+        Code.compile_string("""
+        defmodule Macaw.Auth.Ash.Test.TokenWithoutNotifier do
+          use Ash.Resource,
+            domain: Macaw.Auth.Ash.Test.Elsewhere,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshAuthentication.TokenResource, Macaw.Auth.Ash.TokenResource]
+        end
+        """)
+      end)
 
-    assert_raise Spark.Error.DslError, ~r/Macaw\.Auth\.Ash\.Notifier/, fn ->
-      Code.compile_string(source)
-    end
+    assert warnings =~ "Macaw.Auth.Ash.Notifier"
+
+    assert_raise ArgumentError,
+                 "config :macaw_auth, Macaw.Auth.Ash: token_resource " <>
+                   "Macaw.Auth.Ash.Test.TokenWithoutNotifier needs Macaw.Auth.Ash.Notifier " <>
+                   "among its notifiers",
+                 fn ->
+                   Config.parse!(
+                     user_resource: User,
+                     token_resource: Macaw.Auth.Ash.Test.TokenWithoutNotifier
+                   )
+                 end
   end
 
-  # The section's own claim, at its path: the same deviation as above.
+  # The section's own claims: the verifier's warning at [:notifiers], and
+  # the configuration's refusal, both naming the resource.
   @tag verifies: "ash-token-verifier"
-  @tag deviation:
-         "dco-tek/macaw_compose#86: a Spark verifier's error is a compile warning, not a failure"
-  @tag skip: "deviation: the notifier verifier warns at compile time instead of failing"
-  test "the verifier refuses the resource at compile time, at [:notifiers]" do
-    source = """
-    defmodule Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier do
-      use Ash.Resource,
-        domain: Macaw.Auth.Ash.Test.Elsewhere,
-        data_layer: Ash.DataLayer.Ets,
-        extensions: [AshAuthentication.TokenResource, Macaw.Auth.Ash.TokenResource],
-        notifiers: []
-    end
-    """
+  test "the verifier warns at [:notifiers], and Config refuses the resource at load" do
+    warnings =
+      capture_io(:stderr, fn ->
+        Code.compile_string("""
+        defmodule Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier do
+          use Ash.Resource,
+            domain: Macaw.Auth.Ash.Test.Elsewhere,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshAuthentication.TokenResource, Macaw.Auth.Ash.TokenResource],
+            notifiers: []
+        end
+        """)
+      end)
 
-    error = assert_raise Spark.Error.DslError, fn -> Code.compile_string(source) end
-    assert error.path == [:notifiers]
-    assert error.module == Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier
+    assert warnings =~ "[Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier]\nnotifiers :"
+    assert warnings =~ "needs its notifier"
+
+    error =
+      assert_raise ArgumentError, fn ->
+        Config.parse!(
+          user_resource: User,
+          token_resource: Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier
+        )
+      end
+
+    assert error.message =~ "Macaw.Auth.Ash.Test.AnotherTokenWithoutNotifier"
+    assert error.message =~ "Macaw.Auth.Ash.Notifier"
+
+    # The test app's token resource, which has the notifier, is accepted.
+    assert %{token_resource: Token} = Config.parse!(user_resource: User, token_resource: Token)
   end
 end

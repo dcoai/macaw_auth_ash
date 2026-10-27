@@ -39,8 +39,10 @@ log-out-everywhere, a bulk update over the primary read, revokes every session o
 
 ## 2. The notifier is required {#ash-token-verifier}
 
-A verifier refuses a token resource with this extension and without `Macaw.Auth.Ash.Notifier` among its notifiers, at compile time, with a DSL error at `[:notifiers]`: without it, a revocation made through Ash directly would reach open pages only at their next re-check.
+A token resource with this extension needs `Macaw.Auth.Ash.Notifier` among its notifiers: without it, a revocation made through Ash directly would reach open pages only at their next re-check. One without it is:
+- **warned of at compile time:** the extension's verifier reports a DSL error at `[:notifiers]` naming the notifier. Spark reports a verifier's error as a compile warning, so the resource still compiles unless the build treats warnings as errors;
+- **refused when the configuration loads,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"`. The backend loads its configuration on every call, so no sign-in or session lookup runs over such a resource.
 
 ```test:ash-token-verifier-refuses
-a token resource declaring the extension without notifiers: [Macaw.Auth.Ash.Notifier] fails to compile with a DslError naming the notifier
+a token resource declaring the extension without notifiers: [Macaw.Auth.Ash.Notifier] compiles with a warning naming the notifier, and Config.parse! with it as the token resource raises ArgumentError "token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"
 ```

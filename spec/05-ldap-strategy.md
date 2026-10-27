@@ -36,12 +36,19 @@ end
 | `provision_action_name` | | `provision_with_<name>` |
 | `refresh_action_name` | | `refresh_with_<name>` |
 
-The strategy is the struct `%Macaw.Auth.Ash.Strategy.Ldap{}` with these fields, plus the `resource` and `strategy_module` AshAuthentication fills. **Every named field must be an attribute of the resource:** otherwise a DSL error at compile time, at `[:authentication, :strategies, <name>, <option>]`, `"<field> is not an attribute of this resource"`.
+The strategy is the struct `%Macaw.Auth.Ash.Strategy.Ldap{}` with these fields, plus the `resource` and `strategy_module` AshAuthentication fills. **Every named field must be an attribute of the resource.** A field that isn't one is:
+- **warned of at compile time:** the strategy's verifier reports a DSL error at `[:authentication, :strategies, <name>, <option>]`, `"<field> is not an attribute of this resource"`. Spark reports a verifier's error as a compile warning, so the resource still compiles unless the build treats warnings as errors. The identity, roles, source and display name fields fail to compile outright when the strategy builds its provision and refresh actions (§2): Ash's own accept check refuses them first, with a DSL error at `[:actions, <action>, :accept]`, `"Cannot accept [<field>], because they are not attributes."`. A resource that defines those actions itself leaves them to the warning;
+- **refused when the configuration loads,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) checks **every LDAP strategy on the user resource, whether or not `strategies` names it** (AshAuthentication's plug signs in through it either way), and raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: strategy :<name>'s <option>: <field> is not an attribute of <resource>"`. The backend loads its configuration on every call, so no sign-in or session lookup runs under such a resource;
+- **never read as unset at sign-in,** where nothing checked the strategy (a sign-in through AshAuthentication alone): provisioning raises on a field the record lacks (§4).
 
 **The source is read at each sign-in** (`Macaw.Auth.Ash.Strategy.Ldap.source!/1`): the map, or the function's result, with `type: :ldap` and `name` defaulting to the strategy's name, parsed as a native source. **Prefer the function:** a map in the resource is fixed when it compiles, and a host's directory and its service password belong to the runtime (`bind_password: {:env, "VAR"}` is resolved at sign-in either way). **A configuration fault raises `ArgumentError` at sign-in,** `"LDAP strategy <name>: <fault>"`: a deployment bug, not a refusal.
 
 ```test:ash-ldap-fields
-a strategy naming an identity, roles, source, display name or disabled field that isn't an attribute of the resource fails to compile with a DslError at [:authentication, :strategies, <name>, <option>], "<field> is not an attribute of this resource"
+a strategy :corp whose disabled_field :locked_at isn't an attribute compiles with the verifier's warning at [:authentication, :strategies, :corp, :disabled_field], ":locked_at is not an attribute of this resource"; Config.parse! raises ArgumentError "strategy :corp's disabled_field: :locked_at is not an attribute of <resource>", with strategies naming :corp and with the default [:password] alike
+```
+
+```test:ash-ldap-fields-accepted
+with the resource defining its provision and refresh actions, an identity, roles, source or display name field that isn't an attribute is warned of at its option's path, and Config.parse! raises ArgumentError "strategy :corp's <option>: <field> is not an attribute of <resource>"; with the strategy building those actions, the resource fails to compile with Ash's DslError "Cannot accept [<field>]"
 ```
 
 ```test:ash-ldap-plaintext
@@ -90,6 +97,7 @@ As `Macaw.Auth.Native.Provision` ([macaw_auth 06 §4](https://gitlab.conet.yarin
 - **every later sign-in:** the refresh action replaces the row's roles and display name with the directory's, so a user removed from an admin group loses the role at their next sign-in;
 - **a row with that username that another source owns** (a local user, or another directory's) **is never taken over:** `:username_taken`;
 - **a disabled row stays refused,** `:disabled`, left as it is;
+- **a source or disabled field the record lacks raises `KeyError`** (both are read with `Map.fetch!/2`) rather than reading as unset: a missing disabled field never lets a disabled user in;
 - **two first sign-ins at once:** the resource needs **a unique identity on `identity_field`**, so the second create fails; it looks again, once, and uses the row the other made. Any other create failure is a bug in the resource, and raises.
 
 **What the directory says beyond these is not stored:** its DN, the entry's id, the email, the group DNs (the native source's `extra`). A user resource has no standard place for them.
@@ -108,6 +116,10 @@ a local bob is never signed in by the directory's bob; a row "alice" owned by so
 
 ```test:ash-ldap-disabled
 a disabled provisioned alice is :disabled with the right password and :invalid_credentials with a wrong one
+```
+
+```test:ash-ldap-absent-field
+for alice's existing row and the right password, sign_in/4 with the nas strategy's disabled_field set to :locked_at, or its source_field to :owner, neither an attribute of the user resource, raises KeyError naming the field
 ```
 
 ```test:ash-ldap-session

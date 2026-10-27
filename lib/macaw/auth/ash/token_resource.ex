@@ -32,9 +32,11 @@ defmodule Macaw.Auth.Ash.TokenResource do
   AshAuthentication's log-out-everywhere revokes, as a bulk update without
   notifications, so a notifier alone would never hear of it.
 
-  A verifier refuses a token resource without `Macaw.Auth.Ash.Notifier`:
-  without it, a revocation made through Ash directly would reach open pages
-  only at their next re-check.
+  A token resource without `Macaw.Auth.Ash.Notifier` is warned of at
+  compile time by a verifier (Spark reports its error as a compile
+  warning) and refused by `Macaw.Auth.Ash.Config` when it loads: without
+  the notifier, a revocation made through Ash directly would reach open
+  pages only at their next re-check.
   """
 
   use Spark.Dsl.Extension,
