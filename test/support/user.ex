@@ -9,7 +9,8 @@ defmodule Macaw.Auth.Ash.Test.User do
   use Ash.Resource,
     domain: Macaw.Auth.Ash.Test.Accounts,
     data_layer: AshSqlite.DataLayer,
-    extensions: [AshAuthentication, Macaw.Auth.Ash.Strategy.Ldap]
+    extensions: [AshAuthentication, Macaw.Auth.Ash.Strategy.Ldap],
+    authorizers: [Ash.Policy.Authorizer]
 
   sqlite do
     table("users")
@@ -57,6 +58,19 @@ defmodule Macaw.Auth.Ash.Test.User do
     attribute(:roles, {:array, :string}, default: [], allow_nil?: false, public?: true)
     attribute(:source, :string, default: "local", allow_nil?: false, public?: true)
     attribute(:disabled_at, :utc_datetime_usec, public?: true)
+  end
+
+  # No actor may read or write a user: Macaw.Auth.Ash makes every call with
+  # authorize?: false (spec 01), so the suite passing under this policy shows it.
+  # AshAuthentication's own interactions keep their bypass, as its docs advise.
+  policies do
+    bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+      authorize_if(always())
+    end
+
+    policy always() do
+      forbid_if(always())
+    end
   end
 
   identities do

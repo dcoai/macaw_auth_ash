@@ -15,4 +15,6 @@ every user under this backend reports must_change_password false, and a fresh se
 
 ## 2. Gaps found writing this spec {#ash-gaps}
 
+<!-- surfex: class history -->
+
 None open. The four found in v0.1.0 (no sign-in throttle, the `token_lifetime` ≥ `idle_days` rule unchecked, `idle_days` unbounded, a session for a deleted user raising) were fixed in v0.1.1 (macaw_compose#76): [01 §2.1](01-backend.md#ash-throttle), [01 §1](01-backend.md#ash-config), [02 §1](02-sessions.md#ash-sessions-token). The deleted user's refusal still ended in a `MatchError` in `Macaw.Auth.Plug.log_in/3`, whose contract allowed no error, until macaw_auth v0.2.0 gave `create_session/2` one; v0.2.0 of this library takes it (macaw_compose#84), and the plug now goes back to sign in ([02 §1](02-sessions.md#ash-sessions-token)).

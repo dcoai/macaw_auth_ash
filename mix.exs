@@ -32,7 +32,11 @@ defmodule Macaw.Auth.Ash.MixProject do
       {:ash, "~> 3.7"},
       {:ash_authentication, "~> 4.15"},
       {:ash_sqlite, "~> 0.3", only: :test},
-      {:ecto_sqlite3, "~> 0.17", only: :test}
+      {:ecto_sqlite3, "~> 0.17", only: :test},
+      # The test app's policies (Ash.Policy.Authorizer) need a SAT solver; this one is pure Elixir.
+      {:simple_sat, "~> 0.1", only: :test},
+      # Spec, tests and code kept aligned (macaw_compose spec/00 §4.1); dev/test only.
+      {:surfex, "~> 0.10.0", only: [:dev, :test], runtime: false}
     ]
   end
 end

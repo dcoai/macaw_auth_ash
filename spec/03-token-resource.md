@@ -1,5 +1,7 @@
 # 03 — The token resource {#ash-token-resource}
 
+<!-- surfex: class orientation -->
+
 `Macaw.Auth.Ash.TokenResource` is a Spark DSL extension for the host's AshAuthentication token resource, beside AshAuthentication's own, with this library's notifier:
 
 ```elixir
@@ -27,7 +29,7 @@ It marks the resource as extended (a persisted `:macaw_auth_ash_token?`), which 
 
 `Macaw.Auth.Ash.TokenResource.read_action/0`, `update_action/0` and `revoke_action/0` name the three actions (`:macaw_auth_read`, `:macaw_auth_update`, `:macaw_auth_revoke`).
 
-```test:ash-token-actions
+```test:ash-token-actions-added
 the test app's token resource has :macaw_auth_read (its primary read), :macaw_auth_update accepting extra_data and :macaw_auth_revoke; revoking through it leaves purpose "revocation" and the row's expires_at unchanged
 ```
 
@@ -39,6 +41,6 @@ log-out-everywhere, a bulk update over the primary read, revokes every session o
 
 A verifier refuses a token resource with this extension and without `Macaw.Auth.Ash.Notifier` among its notifiers, at compile time, with a DSL error at `[:notifiers]`: without it, a revocation made through Ash directly would reach open pages only at their next re-check.
 
-```test:ash-token-verifier
+```test:ash-token-verifier-refuses
 a token resource declaring the extension without notifiers: [Macaw.Auth.Ash.Notifier] fails to compile with a DslError naming the notifier
 ```

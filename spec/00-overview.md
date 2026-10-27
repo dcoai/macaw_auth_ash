@@ -2,6 +2,8 @@
 
 ## 1. What macaw_auth_ash holds {#ash-holds}
 
+<!-- surfex: class orientation -->
+
 AshAuthentication is the strongest existing authentication library for Elixir (password, magic link, OAuth2/OIDC, API keys, passkeys, audit-log brute-force protection, maintained by the Ash core team), but adopting it means becoming an Ash client: the user is an Ash resource under an Ash domain on an Ash data layer. Seven of the family's apps are plain Ecto. So `macaw_auth` is built natively, **and** gives an Ash project a way to drop AshAuthentication in (macaw_compose#32, owner amendment of 2026-10-26). `macaw_auth_ash` is that way, in its own library, so `macaw_auth` never depends on Ash. It holds:
 - **the backend,** `Macaw.Auth.Ash`: the [macaw_auth contract](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-contract) over a host's AshAuthentication user and token resources, with its configuration `Macaw.Auth.Ash.Config` ([01](01-backend.md)) and its sessions `Macaw.Auth.Ash.Sessions` ([02](02-sessions.md));
 - **a token-resource extension,** `Macaw.Auth.Ash.TokenResource`, adding the actions sessions need ([03](03-token-resource.md));
@@ -11,6 +13,8 @@ AshAuthentication is the strongest existing authentication library for Elixir (p
 An Ash host keeps Ash's registration, magic links, passkeys and policies; Macaw needs only the contract.
 
 ## 2. Versions and dependencies {#ash-dependencies}
+
+<!-- surfex: class orientation -->
 
 - **`macaw_auth` v0.2.0,** by git tag: the contract (v0.2.0's: `session_idle_seconds/1`, `create_session/2`'s `{:error, :invalid}` for a deleted user, `complete_step/3`'s for a session gone), the plugs and hooks it serves, the conformance kit it runs, the LDAP source its strategy wraps, `Macaw.Auth.announce_revoked/2`, which v0.1.1 added for this library's notifier (macaw_compose#53), and `Macaw.Auth.Native.Throttle`, the native sign-in throttle the backend reuses as it is ([01 §2.1](01-backend.md#ash-throttle)); macaw_auth's application starts it whichever backend is configured. Phoenix, LiveView and PubSub come through it.
 - **`ash_authentication` `~> 4.15`, the stable line** (4.15.0 locked), and **`ash` `~> 3.7`** (3.37.2 locked). AshAuthentication's TOTP strategy exists only in 5.0, a release candidate when this was built; the versions were checked before the work started, and the stable line was chosen (macaw_compose#53).
@@ -50,8 +54,14 @@ Macaw.Auth.verify_second_factor(session.id, "123456") under this backend is {:er
 
 ## 4. Where it fits {#ash-fits}
 
+<!-- surfex: class orientation -->
+
 Like `macaw_auth`, it sits outside Macaw's composition model, among the host libraries ([macaw_compose 00 §4](https://gitlab.conet.yarina.org/dco-tek/macaw_compose/-/blob/main/spec/00-overview.md#overview-packaging)). The host's router uses `Macaw.Auth.Plug` and `Macaw.Auth.Live` as with any backend ([macaw_auth 02](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/02-plugs.md#auth-plug), [03](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/03-live.md#auth-live)). No Ash-based adopter exists yet, so it has no adoption proposal (macaw_compose#32).
 
 ```test:ash-plug
-through Macaw.Auth.Plug, a session cookie's token resolves to its user, roles and session (remote_ip kept) with no pending step; a revoked session's request is sent to "/login" and loses the token from the session
+through Macaw.Auth.Plug, a session cookie's token resolves to its user, roles and session (remote_ip kept) with no pending step
+```
+
+```test:ash-plug-revoked
+through Macaw.Auth.Plug, a revoked session's request is sent to "/login" and loses the token from the session
 ```

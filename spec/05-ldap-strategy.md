@@ -40,6 +40,10 @@ The strategy is the struct `%Macaw.Auth.Ash.Strategy.Ldap{}` with these fields, 
 
 **The source is read at each sign-in** (`Macaw.Auth.Ash.Strategy.Ldap.source!/1`): the map, or the function's result, with `type: :ldap` and `name` defaulting to the strategy's name, parsed as a native source. **Prefer the function:** a map in the resource is fixed when it compiles, and a host's directory and its service password belong to the runtime (`bind_password: {:env, "VAR"}` is resolved at sign-in either way). **A configuration fault raises `ArgumentError` at sign-in,** `"LDAP strategy <name>: <fault>"`: a deployment bug, not a refusal.
 
+```test:ash-ldap-fields
+a strategy naming an identity, roles, source, display name or disabled field that isn't an attribute of the resource fails to compile with a DslError at [:authentication, :strategies, <name>, <option>], "<field> is not an attribute of this resource"
+```
+
 ```test:ash-ldap-plaintext
 a strategy whose source has starttls: false and no allow_plaintext raises ArgumentError matching "allow_plaintext" at sign_in/4
 ```
@@ -90,7 +94,7 @@ As `Macaw.Auth.Native.Provision` ([macaw_auth 06 §4](https://gitlab.conet.yarin
 
 **What the directory says beyond these is not stored:** its DN, the entry's id, the email, the group DNs (the native source's `extra`). A user resource has no standard place for them.
 
-```test:ash-ldap-provision
+```test:ash-ldap-provision-first
 alice's first sign-in through Macaw.Auth makes her row with source "nas", roles ["admin"] and display name "Alice Admin", and the user's id is the row's; bob signs in with ["viewer"]
 ```
 

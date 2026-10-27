@@ -21,6 +21,7 @@ defmodule Macaw.Auth.Ash.PlugTest do
     |> AuthPlug.require_authenticated([])
   end
 
+  @tag verifies: "ash-plug"
   test "a signed-in user passes, with user, session and no pending step" do
     {_user, creds} = Fixtures.user!(%{roles: ["admin"]})
     {:ok, user} = Auth.authenticate(creds)
@@ -36,6 +37,7 @@ defmodule Macaw.Auth.Ash.PlugTest do
     assert conn.assigns.pending_step == nil
   end
 
+  @tag verifies: "ash-plug-revoked"
   test "a revoked session is signed out, and sent to sign in" do
     {user, _} = Fixtures.user!(%{})
     {:ok, token, session} = Auth.create_session(user)
@@ -49,6 +51,7 @@ defmodule Macaw.Auth.Ash.PlugTest do
     assert get_session(conn, AuthPlug.token_key()) == nil
   end
 
+  @tag verifies: "ash-plug-deleted-user"
   test "signing in a user deleted since authenticating goes back to sign in, touching nothing" do
     {_user, creds} = Fixtures.user!(%{})
     {:ok, user} = Auth.authenticate(creds)
