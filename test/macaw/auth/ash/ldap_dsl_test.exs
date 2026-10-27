@@ -12,7 +12,7 @@ defmodule Macaw.Auth.Ash.Strategy.LdapDslTest do
 
   alias Macaw.Auth.Ash.Config
   alias Macaw.Auth.Ash.Strategy.Ldap
-  alias Macaw.Auth.Ash.Test.{Directory, MinimalLdapUser, User}
+  alias Macaw.Auth.Ash.Test.{Boot, Directory, MinimalLdapUser, User}
 
   setup do
     {:ok, nas} = AshAuthentication.Info.strategy(User, :nas)
@@ -97,6 +97,19 @@ defmodule Macaw.Auth.Ash.Strategy.LdapDslTest do
     # Checked whether or not the backend's strategies name it: AshAuthentication
     # can sign in through it all the same.
     assert_raise ArgumentError, message, fn -> Config.parse!(user_resource: user) end
+  end
+
+  @tag verifies: "ash-ldap-fields-boot"
+  test "a user resource with a disabled field that isn't an attribute, configured: :macaw_auth refuses to start" do
+    {user, _warnings} =
+      compile_user("BootLdapUserWithoutDisabledField", :disabled_field, :locked_at)
+
+    assert {:error, {:macaw_auth, {:bad_return, {_, {:EXIT, {%ArgumentError{} = e, _}}}}}} =
+             Boot.boot_with(user_resource: user)
+
+    assert Exception.message(e) ==
+             "config :macaw_auth, Macaw.Auth.Ash: strategy :corp's disabled_field: :locked_at " <>
+               "is not an attribute of #{inspect(user)}"
   end
 
   # The fields the strategy's actions accept fail Ash's accept check when the

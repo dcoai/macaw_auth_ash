@@ -10,7 +10,7 @@ defmodule Macaw.Auth.Ash.BackendTest do
   alias AshAuthentication.{Jwt, TokenResource}
   alias Macaw.Auth
   alias Macaw.Auth.Ash.{Config, Sessions}
-  alias Macaw.Auth.Ash.Test.{CompositeKeyUser, Fixtures, Repo, Token, User}
+  alias Macaw.Auth.Ash.Test.{Boot, CompositeKeyUser, Fixtures, Repo, Token, User}
 
   setup do
     :ok = Fixtures.reset!()
@@ -633,7 +633,7 @@ defmodule Macaw.Auth.Ash.BackendTest do
 
       {:docs_v1, _, _, _, _, _, docs} = Code.fetch_docs(Macaw.Auth.Backend)
       callbacks = for {{:callback, name, arity}, _, _, _, _} <- docs, do: {name, arity}
-      assert length(callbacks) == 9
+      assert length(callbacks) == 10
 
       for {name, arity} <- callbacks do
         assert function_exported?(Macaw.Auth.Ash, name, arity), "#{name}/#{arity}"
@@ -658,6 +658,15 @@ defmodule Macaw.Auth.Ash.BackendTest do
       assert Auth.verify_second_factor(session.id, "123456") == {:error, :unsupported}
       assert Auth.revoke({:user, user.id}) == :ok
       assert Auth.list_sessions(user.id) == []
+
+      # check_config!/0 checks the whole configuration: the test app's is
+      # sound, and a fault raises, naming it.
+      assert Macaw.Auth.Ash.check_config!() == :ok
+      configure(idle_days: 0)
+
+      assert_raise ArgumentError,
+                   ~r/idle_days: 0 is not an integer/,
+                   &Macaw.Auth.Ash.check_config!/0
     end
 
     @tag verifies: "ash-second-factor"
@@ -748,6 +757,18 @@ defmodule Macaw.Auth.Ash.BackendTest do
   end
 
   describe "configuration" do
+    @tag verifies: "ash-check-config-boot"
+    test "checked at boot: a fault refuses to start, naming it; the test app's starts" do
+      assert {:error, {:macaw_auth, {:bad_return, {_, {:EXIT, {%ArgumentError{} = e, _}}}}}} =
+               Boot.boot_with(idle_days: 0)
+
+      assert Exception.message(e) ==
+               "config :macaw_auth, Macaw.Auth.Ash: idle_days: 0 is not an integer from 1 to 3650"
+
+      assert Macaw.Auth.Ash.check_config!() == :ok
+      assert {:ok, _} = Boot.boot_with([])
+    end
+
     @tag verifies: "ash-config-faults"
     test "a fault names its key" do
       assert_raise ArgumentError, ~r/strategy :nope is not on/, fn ->

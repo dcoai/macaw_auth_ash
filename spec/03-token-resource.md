@@ -41,7 +41,11 @@ log-out-everywhere, a bulk update over the primary read, revokes every session o
 
 A token resource with this extension needs `Macaw.Auth.Ash.Notifier` among its notifiers: without it, a revocation made through Ash directly would reach open pages only at their next re-check. One without it is:
 - **warned of at compile time:** the extension's verifier reports a DSL error at `[:notifiers]` naming the notifier. Spark reports a verifier's error as a compile warning, so the resource still compiles unless the build treats warnings as errors;
-- **refused when the configuration loads,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"`. The backend loads its configuration on every call, so no sign-in or session lookup runs over such a resource.
+- **refused at boot,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"`, when it loads, which it first does at boot, through macaw_auth's application calling the backend's `check_config!/0`; so a host configured with such a resource refuses to start. The backend loads its configuration on every call after, so no sign-in or session lookup runs over such a resource.
+
+```test:ash-token-verifier-boot
+with backend: Macaw.Auth.Ash and a token resource without the notifier configured, :macaw_auth refuses to start, the ArgumentError "token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"
+```
 
 ```test:ash-token-verifier-refuses
 a token resource declaring the extension without notifiers: [Macaw.Auth.Ash.Notifier] compiles with a warning naming the notifier, and Config.parse! with it as the token resource raises ArgumentError "token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"

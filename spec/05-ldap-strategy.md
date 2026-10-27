@@ -38,13 +38,17 @@ end
 
 The strategy is the struct `%Macaw.Auth.Ash.Strategy.Ldap{}` with these fields, plus the `resource` and `strategy_module` AshAuthentication fills. **Every named field must be an attribute of the resource.** A field that isn't one is:
 - **warned of at compile time:** the strategy's verifier reports a DSL error at `[:authentication, :strategies, <name>, <option>]`, `"<field> is not an attribute of this resource"`. Spark reports a verifier's error as a compile warning, so the resource still compiles unless the build treats warnings as errors. The identity, roles, source and display name fields fail to compile outright when the strategy builds its provision and refresh actions (§2): Ash's own accept check refuses them first, with a DSL error at `[:actions, <action>, :accept]`, `"Cannot accept [<field>], because they are not attributes."`. A resource that defines those actions itself leaves them to the warning;
-- **refused when the configuration loads,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) checks **every LDAP strategy on the user resource, whether or not `strategies` names it** (AshAuthentication's plug signs in through it either way), and raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: strategy :<name>'s <option>: <field> is not an attribute of <resource>"`. The backend loads its configuration on every call, so no sign-in or session lookup runs under such a resource;
+- **refused at boot,** whatever the build flags were: `Macaw.Auth.Ash.Config` ([01 §1](01-backend.md#ash-config)) checks **every LDAP strategy on the user resource, whether or not `strategies` names it** (AshAuthentication's plug signs in through it either way), and raises `ArgumentError`, `"config :macaw_auth, Macaw.Auth.Ash: strategy :<name>'s <option>: <field> is not an attribute of <resource>"`, when it loads, which it first does at boot, through macaw_auth's application calling the backend's `check_config!/0`; so a host configured with such a resource refuses to start. The backend loads its configuration on every call after, so no sign-in or session lookup runs under such a resource;
 - **never read as unset at sign-in,** where nothing checked the strategy (a sign-in through AshAuthentication alone): provisioning raises on a field the record lacks (§4).
 
 **The source is read at each sign-in** (`Macaw.Auth.Ash.Strategy.Ldap.source!/1`): the map, or the function's result, with `type: :ldap` and `name` defaulting to the strategy's name, parsed as a native source. **Prefer the function:** a map in the resource is fixed when it compiles, and a host's directory and its service password belong to the runtime (`bind_password: {:env, "VAR"}` is resolved at sign-in either way). **A configuration fault raises `ArgumentError` at sign-in,** `"LDAP strategy <name>: <fault>"`: a deployment bug, not a refusal.
 
 ```test:ash-ldap-fields
 a strategy :corp whose disabled_field :locked_at isn't an attribute compiles with the verifier's warning at [:authentication, :strategies, :corp, :disabled_field], ":locked_at is not an attribute of this resource"; Config.parse! raises ArgumentError "strategy :corp's disabled_field: :locked_at is not an attribute of <resource>", with strategies naming :corp and with the default [:password] alike
+```
+
+```test:ash-ldap-fields-boot
+with backend: Macaw.Auth.Ash and a user resource whose LDAP strategy :corp has a disabled_field :locked_at that isn't an attribute, :macaw_auth refuses to start, the ArgumentError "strategy :corp's disabled_field: :locked_at is not an attribute of <resource>"
 ```
 
 ```test:ash-ldap-fields-accepted

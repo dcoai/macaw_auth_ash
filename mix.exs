@@ -1,7 +1,7 @@
 defmodule Macaw.Auth.Ash.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.3.0"
 
   def project do
     [
@@ -28,7 +28,7 @@ defmodule Macaw.Auth.Ash.MixProject do
 
   defp deps do
     [
-      {:macaw_auth, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth.git", tag: "v0.2.0"},
+      {:macaw_auth, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth.git", tag: "v0.4.0"},
       {:ash, "~> 3.7"},
       {:ash_authentication, "~> 4.15"},
       {:ash_sqlite, "~> 0.3", only: :test},

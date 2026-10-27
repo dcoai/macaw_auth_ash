@@ -8,12 +8,15 @@
 | `create_session/2`, `fetch_session/2`, `fetch_session_by_id/2`, `list_sessions/2`, `revoke_sessions/2`, `complete_step/3` | `Macaw.Auth.Ash.Sessions` ([02](02-sessions.md)) |
 | `session_idle_seconds/1` | `Macaw.Auth.Ash.session_idle_seconds/1`: `idle_days` × 86 400, the limit sessions expire by ([02 §3](02-sessions.md#ash-sessions-idle)) |
 | `verify_second_factor/3` | `{:error, :unsupported}` always ([00 §3](00-overview.md#ash-second-factor)) |
+| `check_config!/0` | `Macaw.Auth.Ash.check_config!/0`: `Macaw.Auth.Ash.Config.get/0`, the whole check, at boot (§1) |
 
 **Every read and write is made with `authorize?: false`:** this is the authentication layer itself, before there is an actor to authorize.
 
 ## 1. Configuration {#ash-config}
 
 `config :macaw_auth, Macaw.Auth.Ash, …`, read and checked by `Macaw.Auth.Ash.Config.get/0` (which is `Macaw.Auth.Ash.Config.parse!/1` of the application's setting) **on every call,** not cached: it is a handful of lookups, and a host or a test that changes it sees the change at once. **A fault raises `ArgumentError`,** `"config :macaw_auth, Macaw.Auth.Ash: <fault>"`: it is a deployment bug, not a refusal.
+
+**It is checked at boot.** `Macaw.Auth.Ash.check_config!/0`, the contract's `check_config!/0` ([macaw_auth 01 §2.9](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-backend-check-config)), runs `get/0`, so every check below (the resources, the strategies and their LDAP fields, the notifier, `idle_days` and the token lifetime) is made, and returns `:ok`; macaw_auth's application calls it when it starts with `backend: Macaw.Auth.Ash`. So **a misconfigured host refuses to start, the `ArgumentError` naming the fault,** rather than starting and failing at its first sign-in; and the configuration is still read on every call after.
 
 | Key | What | Default | Checked |
 |---|---|---|---|
@@ -34,6 +37,10 @@ And the user resource needs **a single-attribute primary key:** sessions name th
 **The token lifetime outlasts the idle period.** The user JWT's expiry is a session's absolute limit ([02 §3](02-sessions.md#ash-sessions-idle)), so a `token_lifetime` shorter than `idle_days` would end sessions before they are idle. `parse!/1` reads the user resource's lifetime (`AshAuthentication.Info.authentication_tokens_token_lifetime/1`, `{amount, :days | :hours | :minutes | :seconds}` once AshAuthentication's transformer has made a bare integer hours) and refuses one shorter than `idle_days` × 86 400 seconds, naming both values; equal is accepted.
 
 The faults read: `"unknown keys [:color_scheme]"`, `"user_resource is required"`, `"user_resource: <m> is not an Ash resource"`, `"token_resource is required (<user> names none)"`, `"token_resource <m> needs the Macaw.Auth.Ash.TokenResource extension"`, `"token_resource <m> needs Macaw.Auth.Ash.Notifier among its notifiers"`, `"set one of strategy (a name) or strategies (a non-empty list)"`, `"strategy :nope is not on <user>"`, `"strategy :x is a <struct>"` (a strategy of another kind), `"user_resource needs a single-attribute primary key, not [...]"`, `"<key>: :nope is not an attribute of <user>"`, `"strategy :corp's disabled_field: :locked_at is not an attribute of <user>"` (any of an LDAP strategy's field options), `"roles_from: M.f/1 is not defined"`, `"roles_from: <v> is neither an attribute nor {module, function}"`, `"idle_days: 0 is not an integer from 1 to 3650"`, and `"idle_days: 31 is longer than <user>'s token_lifetime {30, :days}: sessions would end at the token's expiry before they are idle; set token_lifetime to at least 31 days, or idle_days to at most 30"` (the last clause left out when the lifetime is under a day).
+
+```test:ash-check-config-boot
+with backend: Macaw.Auth.Ash and idle_days 0, :macaw_auth refuses to start, the ArgumentError "config :macaw_auth, Macaw.Auth.Ash: idle_days: 0 is not an integer from 1 to 3650"; with the test app's configuration, Macaw.Auth.Ash.check_config!/0 is :ok and :macaw_auth starts
+```
 
 ```test:ash-config-faults
 parse!/1 with strategies: [:nope], an unknown key :color_scheme, disabled_field: :nope and idle_days: 0 each raises ArgumentError naming the fault

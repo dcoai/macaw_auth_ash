@@ -273,6 +273,21 @@ defmodule Macaw.Auth.Ash do
   @spec session_idle_seconds(keyword()) :: pos_integer()
   def session_idle_seconds(_opts), do: Config.get().idle_days * 86_400
 
+  @doc """
+  Checks the whole configuration (`Macaw.Auth.Ash.Config.get/0`: the
+  resources, the strategies and every LDAP strategy's fields, the
+  notifier, `idle_days` against the token lifetime): `:ok`, or
+  `ArgumentError` naming the fault. macaw_auth's application calls it at
+  start, so a misconfigured host refuses boot rather than failing its
+  first sign-in.
+  """
+  @impl Macaw.Auth.Backend
+  @spec check_config!() :: :ok
+  def check_config! do
+    %Config{} = Config.get()
+    :ok
+  end
+
   @impl Macaw.Auth.Backend
   defdelegate list_sessions(user_id, opts), to: Sessions, as: :list
 

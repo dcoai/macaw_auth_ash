@@ -11,7 +11,7 @@ defmodule Macaw.Auth.Ash.TokenResourceTest do
 
   alias Macaw.Auth
   alias Macaw.Auth.Ash.{AnnounceRevocation, Config, TokenResource}
-  alias Macaw.Auth.Ash.Test.{Fixtures, OwnActionsToken, Token, User}
+  alias Macaw.Auth.Ash.Test.{Boot, Fixtures, OwnActionsToken, Token, User}
 
   setup do
     :ok = Fixtures.reset!()
@@ -114,6 +114,28 @@ defmodule Macaw.Auth.Ash.TokenResourceTest do
                      token_resource: Macaw.Auth.Ash.Test.TokenWithoutNotifier
                    )
                  end
+  end
+
+  @tag verifies: "ash-token-verifier-boot"
+  test "a token resource without the notifier, configured: :macaw_auth refuses to start" do
+    capture_io(:stderr, fn ->
+      Code.compile_string("""
+      defmodule Macaw.Auth.Ash.Test.BootTokenWithoutNotifier do
+        use Ash.Resource,
+          domain: Macaw.Auth.Ash.Test.Elsewhere,
+          data_layer: Ash.DataLayer.Ets,
+          extensions: [AshAuthentication.TokenResource, Macaw.Auth.Ash.TokenResource]
+      end
+      """)
+    end)
+
+    assert {:error, {:macaw_auth, {:bad_return, {_, {:EXIT, {%ArgumentError{} = e, _}}}}}} =
+             Boot.boot_with(token_resource: Macaw.Auth.Ash.Test.BootTokenWithoutNotifier)
+
+    assert Exception.message(e) ==
+             "config :macaw_auth, Macaw.Auth.Ash: token_resource " <>
+               "Macaw.Auth.Ash.Test.BootTokenWithoutNotifier needs Macaw.Auth.Ash.Notifier " <>
+               "among its notifiers"
   end
 
   # The section's own claims: the verifier's warning at [:notifiers], and

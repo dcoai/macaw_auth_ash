@@ -13,7 +13,7 @@ A [macaw_auth](https://gitlab.conet.yarina.org/dco-tek/macaw_auth) backend over 
 
 ```elixir
 # mix.exs
-{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.2.1"}
+{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.3.0"}
 
 # config.exs
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
@@ -43,7 +43,7 @@ defmodule MyApp.Accounts.Token do
 end
 ```
 
-and the user resource's `token_lifetime` is a session's absolute limit, so set it to at least `idle_days`. Then the router uses `Macaw.Auth.Plug` and `Macaw.Auth.Live` as with any backend.
+and the user resource's `token_lifetime` is a session's absolute limit, so set it to at least `idle_days`. macaw_auth's application checks the whole configuration when it starts (the backend's `check_config!/0`), so any fault in it refuses boot, naming the fault, rather than failing the first sign-in. Then the router uses `Macaw.Auth.Plug` and `Macaw.Auth.Live` as with any backend.
 
 ## How it maps
 
