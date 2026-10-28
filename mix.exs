@@ -28,7 +28,7 @@ defmodule Macaw.Auth.Ash.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
-  # Published on Hex from its public home, mirrored from GitLab (dco-tek/macaw_compose#155).
+  # Published on Hex from its public home, mirrored from GitLab (dco-tek/macaw/macaw#155).
   defp package do
     [
       licenses: ["MIT"],
@@ -42,7 +42,8 @@ defmodule Macaw.Auth.Ash.MixProject do
 
   defp deps do
     [
-      {:macaw_auth, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth.git", tag: "v0.4.0"},
+      {:macaw_auth,
+       git: "git@gitlab.conet.yarina.org:dco-tek/macaw/macaw_auth.git", tag: "v0.4.0"},
       {:ash, "~> 3.7"},
       {:ash_authentication, "~> 4.15"},
       {:ash_sqlite, "~> 0.3", only: :test},
