@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.3.1 (2026-10-28)
 
+- On Hex: depends on `macaw_auth ~> 0.4.1` from Hex instead of its git tag; the README installs from Hex (macaw#155).
 - The README opens with the early-release notice (macaw#174).
 - Package metadata for Hex: the public home, the changelog link, the files shipped, and docs with `ex_doc` (macaw_compose#155).
 

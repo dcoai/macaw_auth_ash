@@ -17,7 +17,7 @@ A [macaw_auth](https://github.com/dcoai/macaw_auth) backend over [AshAuthenticat
 
 ```elixir
 # mix.exs
-{:macaw_auth_ash, git: "git@gitlab.conet.yarina.org:dco-tek/macaw_auth_ash.git", tag: "v0.3.0"}
+{:macaw_auth_ash, "~> 0.3.1"}
 
 # config.exs
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
@@ -70,4 +70,4 @@ MACAW_AUTH_LDAP_HOST=localhost MACAW_AUTH_LDAP_PORT=3391 MACAW_AUTH_LDAPS_PORT=3
 docker stop macaw-auth-ldap
 ```
 
-Part of [Macaw](https://github.com/dcoai/macaw) (spec/00 §4, host libraries). Released by git tag.
+Part of [Macaw](https://github.com/dcoai/macaw) (spec/00 §4, host libraries). Released on Hex.
