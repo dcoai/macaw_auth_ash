@@ -17,7 +17,13 @@ defmodule Macaw.Auth.Ash.MixProject do
           "resources behind the Macaw.Auth contract, with an LDAP sign-in strategy.",
       source_url: @source_url,
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"], source_ref: "v#{@version}"]
+      docs: [
+        main: "readme",
+        extras: ["README.md", "CHANGELOG.md"],
+        source_ref: "v#{@version}",
+        logo: "brand/logo/macaw_scarlet.svg",
+        assets: %{"brand/logo" => "brand/logo"}
+      ]
     ]
   end
 

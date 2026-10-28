@@ -67,7 +67,7 @@ test:
   extends: .elixir
   stage: test
   # The OpenLDAP fixture directory for the :ldap tests (the LDAP strategy),
-  # macaw's image (its registry allowlists this project's job token): LDAP
+  # Collpa's image (its registry allowlists this project's job token): LDAP
   # with StartTLS on 389, LDAPS on 636, with the CA in test/fixtures/ldap.
   # MACAW_AUTH_LDAP_HOST names it, which includes those tests.
   services:
