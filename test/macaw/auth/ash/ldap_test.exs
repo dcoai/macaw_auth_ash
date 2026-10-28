@@ -19,7 +19,7 @@ defmodule Macaw.Auth.Ash.Strategy.LdapTest do
   alias AshAuthentication.Errors.AuthenticationFailed
   alias Macaw.Auth
   alias Macaw.Auth.Ash.Strategy.Ldap
-  alias Macaw.Auth.Ash.Test.{Directory, Fixtures, Token, User}
+  alias Macaw.Auth.Ash.Test.{Directory, Fixtures, Hash, Token, User}
 
   @moduletag :ldap
 
@@ -230,16 +230,13 @@ defmodule Macaw.Auth.Ash.Strategy.LdapTest do
 
     :telemetry.detach(ref)
 
-    # An empty field still spends a hash's time (the password strategy's
-    # simulate/0): the same order as a local user's wrong password (four of
-    # each, on two users, under the throttle).
+    # An empty field still spends a hash, against nothing (the password
+    # strategy's simulate/0), with an LDAP strategy configured too; a local
+    # user's wrong password spends its one (macaw_auth_ash#1: by what runs).
     {_user, emptied} = Fixtures.user!(%{})
     {_user, mistyped} = Fixtures.user!(%{})
-    empty = %{emptied | password: ""}
-    wrong = %{mistyped | password: "wrong"}
-    {empty_us, _} = :timer.tc(fn -> for _ <- 1..4, do: Auth.authenticate(empty) end)
-    {wrong_us, _} = :timer.tc(fn -> for _ <- 1..4, do: Auth.authenticate(wrong) end)
-    assert empty_us > wrong_us / 4
+    assert Hash.work(fn -> Auth.authenticate(%{emptied | password: ""}) end) == [:simulate]
+    assert Hash.work(fn -> Auth.authenticate(%{mistyped | password: "wrong"}) end) == [:valid?]
 
     # The address may be a tuple: it counts as its string.
     for n <- 1..5 do

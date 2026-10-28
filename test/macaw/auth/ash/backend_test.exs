@@ -10,7 +10,7 @@ defmodule Macaw.Auth.Ash.BackendTest do
   alias AshAuthentication.{Jwt, TokenResource}
   alias Macaw.Auth
   alias Macaw.Auth.Ash.{Config, Sessions}
-  alias Macaw.Auth.Ash.Test.{Boot, CompositeKeyUser, Fixtures, Repo, Token, User}
+  alias Macaw.Auth.Ash.Test.{Boot, CompositeKeyUser, Fixtures, Hash, Repo, Token, User}
 
   setup do
     :ok = Fixtures.reset!()
@@ -60,11 +60,13 @@ defmodule Macaw.Auth.Ash.BackendTest do
     end
 
     @tag verifies: "ash-authenticate-empty"
-    test "an empty or missing username or password is the same refusal" do
+    test "an empty or missing username or password is the same refusal, after a hash against nothing" do
       {_user, creds} = Fixtures.user!(%{})
 
       for bad <- [%{creds | password: ""}, %{creds | username: ""}, %{}, %{username: 1}] do
-        assert Auth.authenticate(bad) == {:error, :invalid_credentials}
+        assert Hash.work(fn ->
+                 assert Auth.authenticate(bad) == {:error, :invalid_credentials}
+               end) == [:simulate]
       end
     end
 
@@ -81,17 +83,59 @@ defmodule Macaw.Auth.Ash.BackendTest do
     end
 
     @tag verifies: "ash-authenticate-timing"
+    # Checked by the verifications that run, never by timing two runs
+    # (macaw_auth_ash#1): each is one bcrypt verification's work.
     test "an unknown user and a wrong password each cost one hash" do
       {_user, creds} = Fixtures.user!(%{})
-      wrong = %{creds | password: "wrong"}
-      unknown = %{creds | username: "nobody"}
 
-      {wrong_us, _} = :timer.tc(fn -> for _ <- 1..5, do: Auth.authenticate(wrong) end)
-      {unknown_us, _} = :timer.tc(fn -> for _ <- 1..5, do: Auth.authenticate(unknown) end)
+      assert Hash.work(fn ->
+               assert Auth.authenticate(%{creds | password: "wrong"}) ==
+                        {:error, :invalid_credentials}
+             end) == [:valid?]
 
-      # Same order of time: a skipped hash would be far quicker.
-      assert unknown_us > wrong_us / 4
+      assert [:simulate] =
+               Hash.work(fn ->
+                 assert Auth.authenticate(%{creds | username: "nobody"}) ==
+                          {:error, :invalid_credentials}
+               end)
     end
+  end
+
+  # An elapsed-time read, as a call in code: on a shared runner it measures
+  # the runner, so "costs a hash" is checked by the verifications that run
+  # (Macaw.Auth.Ash.Test.Hash), never by timing (macaw_auth_ash#1).
+  @clocks [{:timer, :tc}, {System, :monotonic_time}, {:erlang, :monotonic_time}]
+
+  defp clocks(source) do
+    {_, found} =
+      source
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk([], fn
+        {{:., _, [{:__aliases__, _, parts}, fun]}, _, _} = node, acc ->
+          {node, [{Module.concat(parts), fun} | acc]}
+
+        {{:., _, [module, fun]}, _, _} = node, acc when is_atom(module) ->
+          {node, [{module, fun} | acc]}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    Enum.filter(found, &(&1 in @clocks))
+  end
+
+  @tag verifies: "ash-authenticate-timing"
+  test "no test times its code" do
+    sources = Path.wildcard("test/**/*.{ex,exs}")
+    assert sources != []
+
+    for path <- sources,
+        do: assert(clocks(File.read!(path)) == [], "#{path} reads elapsed time")
+
+    # The walk sees a read when there is one, and not one in a comment.
+    assert clocks(~S|{us, _} = :timer.tc(fn -> 1 end)|) == [{:timer, :tc}]
+    assert clocks(~S|System.monotonic_time(:microsecond)|) == [{System, :monotonic_time}]
+    assert clocks("# :timer.tc(f)\n:ok") == []
   end
 
   def shouted(record), do: Enum.map(record.roles, &String.upcase/1)
@@ -230,16 +274,15 @@ defmodule Macaw.Auth.Ash.BackendTest do
       {_user, checked} = Fixtures.user!(%{})
       fail_times(blocked, 5, now: @t0)
 
-      {blocked_us, _} =
-        :timer.tc(fn -> for _ <- 1..5, do: Auth.authenticate(blocked, now: @t0) end)
+      # The right password, unchecked: one hash against nothing.
+      assert Hash.work(fn ->
+               assert Auth.authenticate(blocked, now: @t0) == {:error, :throttled}
+             end) == [:simulate]
 
-      {checked_us, _} =
-        :timer.tc(fn ->
-          for _ <- 1..5, do: Auth.authenticate(%{checked | password: "wrong"}, now: @t0)
-        end)
-
-      # Same order of time: a skipped hash would be far quicker.
-      assert blocked_us > checked_us / 4
+      assert Hash.work(fn ->
+               assert Auth.authenticate(%{checked | password: "wrong"}, now: @t0) ==
+                        {:error, :invalid_credentials}
+             end) == [:valid?]
     end
 
     # The native throttle's constants, as this backend counts for it: five

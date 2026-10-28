@@ -31,6 +31,7 @@ defmodule Macaw.Auth.Ash.Test.User do
       password :password do
         identity_field(:username)
         hashed_password_field(:hashed_password)
+        hash_provider(Macaw.Auth.Ash.Test.Hash)
       end
 
       ldap :nas do

@@ -83,7 +83,7 @@ a disabled user is {:error, :disabled} with the right password and {:error, :inv
 ```
 
 ```test:ash-authenticate-empty
-an empty password, an empty username, %{} and %{username: 1} are each {:error, :invalid_credentials}
+an empty password, an empty username, %{} and %{username: 1} are each {:error, :invalid_credentials}, after one hash verification against nothing (simulate/0)
 ```
 
 ```test:ash-authenticate-trim
@@ -91,7 +91,7 @@ the username with surrounding spaces signs in; the password with surrounding spa
 ```
 
 ```test:ash-authenticate-timing
-five refusals of an unknown user take more than a quarter of the time of five refusals of a wrong password (each costs a hash)
+a wrong password does one hash verification (valid?/2) and an unknown user one against nothing (simulate/0): the same bcrypt work, checked by what runs, never by timing (#1)
 ```
 
 ```test:ash-authenticate-discarded-token
@@ -139,7 +139,7 @@ a throttled right password emits reason :throttled with strategy and user id nil
 ```
 
 ```test:ash-throttle-timing
-five throttled attempts take more than a quarter of the time of five checked wrong passwords (each spends a hash)
+a throttled attempt does one hash verification against nothing (simulate/0), as a checked wrong password does one against its hash (valid?/2)
 ```
 
 ## 3. The user {#ash-to-user}
