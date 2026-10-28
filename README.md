@@ -1,6 +1,8 @@
 # macaw_auth_ash
 
-A [macaw_auth](https://gitlab.conet.yarina.org/dco-tek/macaw_auth) backend over [AshAuthentication](https://hexdocs.pm/ash_authentication) 4.x: a host's Ash user and token resources behind the `Macaw.Auth` contract, so an Ash host gets macaw_auth's plugs, LiveView hooks, steps and revocation push without a second user table.
+Public home: [github.com/dcoai/macaw_auth_ash](https://github.com/dcoai/macaw_auth_ash) · Docs: [hexdocs.pm](https://hexdocs.pm/macaw_auth_ash)
+
+A [macaw_auth](https://github.com/dcoai/macaw_auth) backend over [AshAuthentication](https://hexdocs.pm/ash_authentication) 4.x: a host's Ash user and token resources behind the `Macaw.Auth` contract, so an Ash host gets macaw_auth's plugs, LiveView hooks, steps and revocation push without a second user table.
 
 | Module | What it does |
 |---|---|
@@ -66,4 +68,4 @@ MACAW_AUTH_LDAP_HOST=localhost MACAW_AUTH_LDAP_PORT=3391 MACAW_AUTH_LDAPS_PORT=3
 docker stop macaw-auth-ldap
 ```
 
-Part of [Macaw](https://gitlab.conet.yarina.org/dco-tek/macaw_compose) (spec/00 §4, host libraries). Released by git tag.
+Part of [Macaw](https://github.com/dcoai/macaw) (spec/00 §4, host libraries). Released by git tag.

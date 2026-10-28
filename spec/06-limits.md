@@ -4,7 +4,7 @@
 
 Known when v0.1.0 was released (macaw_compose#53):
 - **No second factor.** AshAuthentication 4.x has none; the backend refuses every code and the kit's block is pending until 5.0 is final ([00 §3](00-overview.md#ash-second-factor)).
-- **`must_change_password` isn't mapped:** every user reports false, so no session owes a password change under this backend. The contract's step exists ([macaw_auth 01 §4](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-steps)); nothing configures a field for it.
+- **`must_change_password` isn't mapped:** every user reports false, so no session owes a password change under this backend. The contract's step exists ([macaw_auth 01 §4](https://github.com/dcoai/macaw_auth/blob/main/spec/01-contract.md#auth-steps)); nothing configures a field for it.
 - **No generator for the host's resources.** A host writes its user and token resources itself, with the extension, the notifier, a unique identity on the username, and the fields it names in the configuration; the test app's are the worked example.
 - **An extra token per password sign-in.** AshAuthentication 4.15's password sign-in always signs a token; `Macaw.Auth.Ash` revokes it at once, quietly ([01 §2](01-backend.md#ash-authenticate)), so each password sign-in leaves a revocation row in the token resource until the expunger removes it at the token's expiry.
 - **What the directory says beyond the username, roles and display name isn't stored** ([05 §4](05-ldap-strategy.md#ash-ldap-provision)).

@@ -1,6 +1,6 @@
 # 04 — Announcing revocations {#ash-announce}
 
-`Macaw.Auth.revoke/2` tells a user's open LiveViews which of their sessions ended, and they disconnect at once ([macaw_auth 01 §6](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/01-contract.md#auth-revocation)). But an Ash host may revoke a token without it: AshAuthentication's sign-out revokes by token, an admin action may revoke by jti, log-out-everywhere revokes them all. Without what follows, those pages would learn only at their next re-check (every minute by default). **Every revocation, whoever makes it, reaches the user's open pages once.**
+`Macaw.Auth.revoke/2` tells a user's open LiveViews which of their sessions ended, and they disconnect at once ([macaw_auth 01 §6](https://github.com/dcoai/macaw_auth/blob/main/spec/01-contract.md#auth-revocation)). But an Ash host may revoke a token without it: AshAuthentication's sign-out revokes by token, an admin action may revoke by jti, log-out-everywhere revokes them all. Without what follows, those pages would learn only at their next re-check (every minute by default). **Every revocation, whoever makes it, reaches the user's open pages once.**
 
 ## 1. The notifier {#ash-notifier}
 

@@ -1,6 +1,6 @@
 # 05 — The LDAP strategy {#ash-ldap}
 
-`Macaw.Auth.Ash.Strategy.Ldap` is a directory sign-in as an AshAuthentication custom strategy: macaw_auth's `Macaw.Auth.Native.Source.Ldap` ([macaw_auth 07](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/07-native-ldap.md#auth-ldap): its RFC 4514 and filter escaping, its TLS rules with `allow_plaintext: false`, its group checks and role mapping) on an Ash user resource, which it provisions at a user's first sign-in. AshAuthentication has no LDAP strategy; this is the one implementation, used from Ash.
+`Macaw.Auth.Ash.Strategy.Ldap` is a directory sign-in as an AshAuthentication custom strategy: macaw_auth's `Macaw.Auth.Native.Source.Ldap` ([macaw_auth 07](https://github.com/dcoai/macaw_auth/blob/main/spec/07-native-ldap.md#auth-ldap): its RFC 4514 and filter escaping, its TLS rules with `allow_plaintext: false`, its group checks and role mapping) on an Ash user resource, which it provisions at a user's first sign-in. AshAuthentication has no LDAP strategy; this is the one implementation, used from Ash.
 
 ## 1. The DSL {#ash-ldap-dsl}
 
@@ -26,7 +26,7 @@ end
 | Option | What | Default |
 |---|---|---|
 | name (the argument) | the strategy's name, and the source's | `:ldap` |
-| `source` (required) | the directory's configuration, as a native LDAP source's ([macaw_auth 07 §1](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/07-native-ldap.md#auth-ldap-config)): a map, or `{module, function, args}` returning one | |
+| `source` (required) | the directory's configuration, as a native LDAP source's ([macaw_auth 07 §1](https://github.com/dcoai/macaw_auth/blob/main/spec/07-native-ldap.md#auth-ldap-config)): a map, or `{module, function, args}` returning one | |
 | `identity_field` | the attribute the directory's username goes in | `:username` |
 | `roles_field` | the attribute (a list of strings) of roles | `:roles` |
 | `source_field` | the attribute naming which source owns the row | `:source` |
@@ -76,8 +76,8 @@ AshAuthentication.Strategy.action(nas, :sign_in, %{"username" => "bob", "passwor
 
 ## 3. Signing in {#ash-ldap-sign-in}
 
-`Macaw.Auth.Ash.Strategy.Ldap.sign_in/4` (`strategy`, `username`, `password`, `opts`) checks the password against the directory ([macaw_auth 07 §3](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/07-native-ldap.md#auth-ldap-flow)) and provisions the user (§4): `{:ok, record}`, or `{:error, reason, knows?}`:
-- a directory refusal gives the source's reason, and **`knows?` is the source's own `knows?/2`** ([macaw_auth 07 §6](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/07-native-ldap.md#auth-ldap-knows)), so `Macaw.Auth.Ash`'s chain passes an unreachable directory, an unknown entry or a direct-bind wrong password on to the next strategy ([01 §2](01-backend.md#ash-authenticate));
+`Macaw.Auth.Ash.Strategy.Ldap.sign_in/4` (`strategy`, `username`, `password`, `opts`) checks the password against the directory ([macaw_auth 07 §3](https://github.com/dcoai/macaw_auth/blob/main/spec/07-native-ldap.md#auth-ldap-flow)) and provisions the user (§4): `{:ok, record}`, or `{:error, reason, knows?}`:
+- a directory refusal gives the source's reason, and **`knows?` is the source's own `knows?/2`** ([macaw_auth 07 §6](https://github.com/dcoai/macaw_auth/blob/main/spec/07-native-ldap.md#auth-ldap-knows)), so `Macaw.Auth.Ash`'s chain passes an unreachable directory, an unknown entry or a direct-bind wrong password on to the next strategy ([01 §2](01-backend.md#ash-authenticate));
 - **a provisioning refusal is always final:** `:username_taken` or `:disabled`.
 
 `Macaw.Auth.Ash.Strategy.Ldap.explain_refusal/1` explains a reason, for logs: `:username_taken` is `"a user with that username belongs to another source"`, `:disabled` is `"the user is disabled"`, and every other is the source's explanation.
@@ -96,7 +96,7 @@ without the directory's CA, sign_in/4 is {:error, :tls_failed, false}
 
 ## 4. Provisioning {#ash-ldap-provision}
 
-As `Macaw.Auth.Native.Provision` ([macaw_auth 06 §4](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/06-native-sources.md#auth-provision)), over the resource, by the identity field:
+As `Macaw.Auth.Native.Provision` ([macaw_auth 06 §4](https://github.com/dcoai/macaw_auth/blob/main/spec/06-native-sources.md#auth-provision)), over the resource, by the identity field:
 - **first sign-in:** the provision action makes a row with the directory's (normalized) username, its roles, `source_field` the directory's name, the display name when there is a field for it, and **no password;**
 - **every later sign-in:** the refresh action replaces the row's roles and display name with the directory's, so a user removed from an admin group loses the role at their next sign-in;
 - **a row with that username that another source owns** (a local user, or another directory's) **is never taken over:** `:username_taken`;

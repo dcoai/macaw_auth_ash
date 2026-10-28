@@ -1,6 +1,6 @@
 # macaw_auth_ash specification
 
-`macaw_auth_ash` is a [macaw_auth](https://gitlab.conet.yarina.org/dco-tek/macaw_auth/-/blob/main/spec/README.md) backend over AshAuthentication: a host's Ash user and token resources behind the `Macaw.Auth` contract, so an Ash host gets macaw_auth's plugs, LiveView hooks, steps and revocation push without a second user table; and macaw_auth's LDAP source as an AshAuthentication strategy. Each Macaw component has its own spec in its own repository (dco-tek/macaw_compose#61); this is `macaw_auth_ash`'s. The family's overview, and where the host libraries sit in it, is in [macaw_compose 00 §4](https://gitlab.conet.yarina.org/dco-tek/macaw_compose/-/blob/main/spec/00-overview.md#overview-packaging).
+`macaw_auth_ash` is a [macaw_auth](https://github.com/dcoai/macaw_auth/blob/main/spec/README.md) backend over AshAuthentication: a host's Ash user and token resources behind the `Macaw.Auth` contract, so an Ash host gets macaw_auth's plugs, LiveView hooks, steps and revocation push without a second user table; and macaw_auth's LDAP source as an AshAuthentication strategy. Each Macaw component has its own spec in its own repository (dco-tek/macaw_compose#61); this is `macaw_auth_ash`'s. The family's overview, and where the host libraries sit in it, is in [macaw_compose 00 §4](https://github.com/dcoai/macaw/blob/main/spec/00-overview.md#overview-packaging).
 
 | File | Covers | Status |
 |---|---|---|
