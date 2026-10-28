@@ -1,5 +1,7 @@
 # macaw_auth_ash
 
+> **This software is a very early release, and not ready for general use.**
+
 Public home: [github.com/dcoai/macaw_auth_ash](https://github.com/dcoai/macaw_auth_ash) · Docs: [hexdocs.pm](https://hexdocs.pm/macaw_auth_ash)
 
 A [macaw_auth](https://github.com/dcoai/macaw_auth) backend over [AshAuthentication](https://hexdocs.pm/ash_authentication) 4.x: a host's Ash user and token resources behind the `Macaw.Auth` contract, so an Ash host gets macaw_auth's plugs, LiveView hooks, steps and revocation push without a second user table.
