@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.3 (2026-10-28)
 
 - Tests check that a refusal spends a hash by the verifications that run, never by timing two runs, and a test forbids timing in `test/` (#1).
 

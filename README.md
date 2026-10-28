@@ -19,7 +19,7 @@ A [macaw_auth](https://github.com/dcoai/macaw_auth) backend over [AshAuthenticat
 
 ```elixir
 # mix.exs
-{:macaw_auth_ash, "~> 0.3.2"}
+{:macaw_auth_ash, "~> 0.3.3"}
 
 # config.exs
 config :macaw_auth, backend: Macaw.Auth.Ash, pubsub: MyApp.PubSub
