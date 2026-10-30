@@ -520,6 +520,10 @@ defmodule Macaw.Auth.Ash.BackendTest do
       # added Macaw's metadata to the row AshAuthentication stored.
       [row] = Ash.read!(Token, action: :macaw_auth_read, authorize?: false)
       assert {row.jti, row.purpose, row.subject} == {session.id, "user", claims["sub"]}
+      # One spelling of the subject: AshAuthentication's own.
+      assert row.subject ==
+               AshAuthentication.user_to_subject(Ash.get!(User, user.id, authorize?: false))
+
       assert claims["jti"] == session.id
       assert DateTime.to_unix(row.expires_at) == claims["exp"]
 

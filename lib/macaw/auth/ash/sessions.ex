@@ -327,12 +327,13 @@ defmodule Macaw.Auth.Ash.Sessions do
     end
   end
 
-  # As `AshAuthentication.user_to_subject/1` makes it, from the id alone, so
-  # a deleted user's sessions can still be found.
-  defp subject(config, user_id) do
-    name = AshAuthentication.Info.authentication_subject_name!(config.user_resource)
-    "#{name}?#{URI.encode_query(%{config.primary_key => user_id})}"
-  end
+  # AshAuthentication's own subject, made from a record carrying only the id,
+  # so a deleted user's sessions can still be found.
+  defp subject(config, user_id),
+    do:
+      AshAuthentication.user_to_subject(
+        struct(config.user_resource, [{config.primary_key, user_id}])
+      )
 
   defp to_session(jti, user_id, meta) do
     %Session{

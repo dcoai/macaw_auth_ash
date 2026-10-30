@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A user's session subject is AshAuthentication's own (`AshAuthentication.user_to_subject/1` on a record carrying only the id), never a second hand-built spelling, so listing and revoking a deleted user's sessions keep finding them (#4, macaw#188 A2).
+
 ## v0.3.3 (2026-10-28)
 
 - Tests check that a refusal spends a hash by the verifications that run, never by timing two runs, and a test forbids timing in `test/` (#1).
