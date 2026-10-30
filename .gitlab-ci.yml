@@ -61,6 +61,7 @@ spec-links:
   image: $ELIXIR_IMAGE
   stage: check
   script:
+    - elixir ci/spec_links.exs --self-test
     - elixir ci/spec_links.exs
 
 test:
