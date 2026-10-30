@@ -2,7 +2,7 @@ defmodule Macaw.Auth.Ash.MixProject do
   use Mix.Project
 
   @source_url "https://github.com/dcoai/macaw_auth_ash"
-  @version "0.3.3"
+  @version "0.3.4"
 
   def project do
     [
